@@ -1,0 +1,100 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run lint:*)",
+      "Bash(cat:*)",
+      "Bash(chmod:*)",
+      "Bash(.claude/hooks/list-skills.sh)",
+      "Skill(cloudflare-workflows)",
+      "Bash(.claude/hooks/pre-commit-checks.sh)",
+      "Bash(echo:*)",
+      "Skill(rwsdk-do-db)",
+      "mcp__plugin_compounding-engineering_context7__resolve-library-id",
+      "WebSearch",
+      "mcp__plugin_compounding-engineering_context7__get-library-docs",
+      "Bash(bd create:*)",
+      "Bash(bd epic --help:*)",
+      "Bash(bd dep add:*)",
+      "Bash(bd show:*)",
+      "Bash(bd ready:*)",
+      "Bash(bd sync:*)",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__get-library-docs",
+      "Bash(bd list:*)",
+      "Skill(rwsdk-routing)",
+      "Bash(ls:*)",
+      "Skill(cloudflare-containers)",
+      "Skill(rwsdk-queues)",
+      "WebFetch(domain:www.anthropic.com)",
+      "WebFetch(domain:docs.trychroma.com)",
+      "WebFetch(domain:jina.ai)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:docs.claude.com)",
+      "WebFetch(domain:cookbook.chromadb.dev)",
+      "Skill(chromadb-cloudflare)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "WebFetch(domain:react-hook-form.com)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(git rebase:*)",
+      "WebFetch(domain:www.permit.io)",
+      "WebFetch(domain:developers.cloudflare.com)",
+      "Bash(mkdir:*)",
+      "Bash(bd update:*)",
+      "Bash(npm install:*)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm run generate:*)",
+      "Bash(pnpm run types:*)",
+      "Bash(bd dep remove:*)",
+      "Bash(bd close:*)",
+      "Bash(bd stats:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(pnpm run lint:*)",
+      "Bash(npm run lint:fix:*)",
+      "Bash(lsof:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run clean:*)",
+      "mcp__plugin_compounding-engineering_playwright__browser_file_upload",
+      "mcp__ide__getDiagnostics",
+      "Bash(shuf:*)",
+      "Bash(gshuf:*)",
+      "Bash(pnpm tsc:*)",
+      "Bash(pnpm exec tsc:*)",
+      "Bash(npx wrangler:*)",
+      "Bash(pnpm run lint:fix:*)",
+      "Bash(.claude/hooks/require-phosphor-icon-suffix.sh:*)",
+      "Bash(curl:*)",
+      "Bash(sqlite3:*)",
+      "Bash(.claude/hooks/worktree-setup.sh)",
+      "Bash(pnpm install)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/worktree-setup.sh"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/no-as-any.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {}
+}

@@ -1,0 +1,61 @@
+{
+  // Schema reference for wrangler configuration
+  "$schema": "node_modules/wrangler/config-schema.json",
+
+  // Name of your worker
+  "name": "__change_me__",
+
+  // Entry point for your worker
+  "main": "src/worker.tsx",
+
+  // Compatibility settings
+  "compatibility_date": "2025-08-21",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Assets configuration
+  "assets": {
+    "binding": "ASSETS",
+  },
+
+  // R2 bucket for avatar storage
+  "r2_buckets": [
+    {
+      "binding": "AVATAR_BUCKET",
+      "bucket_name": "user-avatars",
+    },
+  ],
+
+  // Observability settings
+  "observability": {
+    "enabled": true,
+  },
+
+  // Environment variables (secrets should be set via wrangler secret)
+  "vars": {
+    "BETTER_AUTH_URL": "http://localhost:5173",
+  },
+
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "DATABASE",
+        "class_name": "Database",
+      },
+      {
+        "name": "REALTIME_DURABLE_OBJECT",
+        "class_name": "RealtimeDurableObject",
+      },
+    ],
+  },
+
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["Database"],
+    },
+    {
+      "tag": "v2",
+      "new_classes": ["RealtimeDurableObject"],
+    },
+  ],
+}
