@@ -110,4 +110,162 @@ export const migrations = {
       await db.schema.dropTable('user').ifExists().execute();
     },
   },
+  '002_organization_tables': {
+    async up(db) {
+      return [
+        // organization table
+        await db.schema
+          .createTable('organization')
+          .addColumn('id', 'text', (col) => col.primaryKey())
+          .addColumn('name', 'text', (col) => col.notNull())
+          .addColumn('slug', 'text', (col) => col.notNull())
+          .addColumn('logo', 'text')
+          .addColumn('metadata', 'text')
+          .addColumn('createdAt', 'text', (col) => col.notNull())
+          .execute(),
+
+        await db.schema
+          .createIndex('organization_slug_idx')
+          .on('organization')
+          .column('slug')
+          .unique()
+          .execute(),
+
+        // member table (org membership)
+        await db.schema
+          .createTable('member')
+          .addColumn('id', 'text', (col) => col.primaryKey())
+          .addColumn('organizationId', 'text', (col) =>
+            col.notNull().references('organization.id').onDelete('cascade')
+          )
+          .addColumn('userId', 'text', (col) =>
+            col.notNull().references('user.id').onDelete('cascade')
+          )
+          .addColumn('role', 'text', (col) => col.notNull())
+          .addColumn('createdAt', 'text', (col) => col.notNull())
+          .execute(),
+
+        await db.schema
+          .createIndex('member_org_id_idx')
+          .on('member')
+          .column('organizationId')
+          .execute(),
+
+        await db.schema
+          .createIndex('member_user_id_idx')
+          .on('member')
+          .column('userId')
+          .execute(),
+
+        await db.schema
+          .createIndex('member_org_user_unique_idx')
+          .on('member')
+          .columns(['organizationId', 'userId'])
+          .unique()
+          .execute(),
+
+        // invitation table (required by Better Auth org plugin)
+        await db.schema
+          .createTable('invitation')
+          .addColumn('id', 'text', (col) => col.primaryKey())
+          .addColumn('organizationId', 'text', (col) =>
+            col.notNull().references('organization.id').onDelete('cascade')
+          )
+          .addColumn('email', 'text', (col) => col.notNull())
+          .addColumn('role', 'text', (col) => col.notNull())
+          .addColumn('status', 'text', (col) => col.notNull())
+          .addColumn('expiresAt', 'text', (col) => col.notNull())
+          .addColumn('inviterId', 'text', (col) =>
+            col.notNull().references('user.id').onDelete('cascade')
+          )
+          .addColumn('teamId', 'text')
+          .addColumn('createdAt', 'text', (col) => col.notNull())
+          .execute(),
+
+        await db.schema
+          .createIndex('invitation_org_id_idx')
+          .on('invitation')
+          .column('organizationId')
+          .execute(),
+
+        // team table (with parentTeamId for hierarchy)
+        await db.schema
+          .createTable('team')
+          .addColumn('id', 'text', (col) => col.primaryKey())
+          .addColumn('name', 'text', (col) => col.notNull())
+          .addColumn('organizationId', 'text', (col) =>
+            col.notNull().references('organization.id').onDelete('cascade')
+          )
+          .addColumn('createdAt', 'text', (col) => col.notNull())
+          .addColumn('updatedAt', 'text')
+          .addColumn('parentTeamId', 'text')
+          .execute(),
+
+        await db.schema
+          .createIndex('team_org_id_idx')
+          .on('team')
+          .column('organizationId')
+          .execute(),
+
+        await db.schema
+          .createIndex('team_parent_id_idx')
+          .on('team')
+          .column('parentTeamId')
+          .execute(),
+
+        // teamMember table
+        await db.schema
+          .createTable('teamMember')
+          .addColumn('id', 'text', (col) => col.primaryKey())
+          .addColumn('teamId', 'text', (col) =>
+            col.notNull().references('team.id').onDelete('cascade')
+          )
+          .addColumn('userId', 'text', (col) =>
+            col.notNull().references('user.id').onDelete('cascade')
+          )
+          .addColumn('createdAt', 'text', (col) => col.notNull())
+          .execute(),
+
+        await db.schema
+          .createIndex('team_member_team_id_idx')
+          .on('teamMember')
+          .column('teamId')
+          .execute(),
+
+        await db.schema
+          .createIndex('team_member_user_id_idx')
+          .on('teamMember')
+          .column('userId')
+          .execute(),
+
+        await db.schema
+          .createIndex('team_member_unique_idx')
+          .on('teamMember')
+          .columns(['teamId', 'userId'])
+          .unique()
+          .execute(),
+
+        // Add activeOrganizationId and activeTeamId to session table
+        await db.schema
+          .alterTable('session')
+          .addColumn('activeOrganizationId', 'text')
+          .execute(),
+
+        await db.schema
+          .alterTable('session')
+          .addColumn('activeTeamId', 'text')
+          .execute(),
+      ];
+    },
+
+    async down(db) {
+      await db.schema.dropTable('teamMember').ifExists().execute();
+      await db.schema.dropTable('team').ifExists().execute();
+      await db.schema.dropTable('invitation').ifExists().execute();
+      await db.schema.dropTable('member').ifExists().execute();
+      await db.schema.dropTable('organization').ifExists().execute();
+      // Note: SQLite doesn't support DROP COLUMN directly.
+      // activeOrganizationId and activeTeamId on session would require table rebuild to remove.
+    },
+  },
 } satisfies Migrations;

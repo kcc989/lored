@@ -27,6 +27,17 @@ export const Home = () => {
     );
   }
 
+  // Redirect to org selection if no active organization
+  if (!ctx.activeOrganization) {
+    return (
+      <script
+        dangerouslySetInnerHTML={{
+          __html: 'window.location.href = "/org/select";',
+        }}
+      />
+    );
+  }
+
   // Show authenticated user's home page
   return (
     <AppLayout>

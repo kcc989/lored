@@ -31,11 +31,44 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 						name: this.props?.name,
 						email: this.props?.email,
 						username: this.props?.username,
+						organizations: this.props?.organizations,
 					}),
 					type: 'text',
 				},
 			],
 		}));
+
+		this.server.tool(
+			'list-organizations',
+			'List your organizations and their teams',
+			{},
+			async () => ({
+				content: [
+					{
+						text: JSON.stringify(this.props?.organizations ?? []),
+						type: 'text',
+					},
+				],
+			}),
+		);
+
+		this.server.tool(
+			'list-teams',
+			'List teams for a specific organization',
+			{ organizationId: z.string().describe('The organization ID to list teams for') },
+			async ({ organizationId }) => {
+				const org = this.props?.organizations?.find((o) => o.id === organizationId);
+				if (!org) {
+					return {
+						content: [{ text: 'Organization not found', type: 'text' as const }],
+						isError: true,
+					};
+				}
+				return {
+					content: [{ text: JSON.stringify(org.teams), type: 'text' as const }],
+				};
+			},
+		);
 	}
 }
 

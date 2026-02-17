@@ -1,5 +1,5 @@
 import { betterAuth } from 'better-auth';
-import { username } from 'better-auth/plugins';
+import { organization, username } from 'better-auth/plugins';
 
 import { rwsdkAdapter } from './durableObjectAdapter';
 
@@ -13,19 +13,18 @@ export const createAuth = (env: Env) => {
     },
     trustedOrigins: [env.BETTER_AUTH_URL],
     emailAndPassword: {
-      enabled: false, // Disable email/password auth, only use OAuth
+      enabled: false,
     },
     socialProviders: {
       github: {
         clientId: env.GITHUB_CLIENT_ID,
         clientSecret: env.GITHUB_CLIENT_SECRET,
-        // Better Auth will automatically handle the callback URL
       },
     },
     session: {
       cookieCache: {
         enabled: true,
-        maxAge: 60 * 5, // 5 minutes - enough for OAuth flow
+        maxAge: 60 * 5,
       },
     },
     advanced: {
@@ -35,23 +34,31 @@ export const createAuth = (env: Env) => {
     },
     callbacks: {
       async onSignIn() {
-        // Redirect to home page after successful sign in
         return {
           redirect: '/',
         };
       },
     },
 
-    plugins: [username()],
-    // Better Auth automatically creates the required tables:
-    // - user (id, email, emailVerified, name, image, createdAt, updatedAt)
-    // - session (id, userId, expiresAt, ipAddress, userAgent)
-    // - account (id, userId, accountId, providerId, accessToken, refreshToken, expiresAt, scope)
-    //
-    // The username plugin adds:
-    // - username field to user table
-    //
-    // Our existing schema is compatible with these requirements
+    plugins: [
+      username(),
+      organization({
+        teams: {
+          enabled: true,
+        },
+        schema: {
+          team: {
+            additionalFields: {
+              parentTeamId: {
+                type: 'string',
+                required: false,
+                input: true,
+              },
+            },
+          },
+        },
+      }),
+    ],
   });
 };
 
@@ -68,16 +75,45 @@ const createAuthForCLI = async () => {
 // Export for CLI compatibility - Better Auth CLI will detect this
 export const auth = await createAuthForCLI();
 
-// Type inference from Better Auth with username plugin
-// getSession() returns { session: {...}, user: {...} }
+// Type inference from Better Auth with organization + username plugins
 export type Session = NonNullable<
   Awaited<ReturnType<typeof auth.api.getSession>>
 > & {
   user: typeof auth.$Infer.Session.user & {
-    username?: string | null; // Added by username plugin
+    username?: string | null;
+  };
+  session: typeof auth.$Infer.Session.session & {
+    activeOrganizationId?: string | null;
+    activeTeamId?: string | null;
   };
 };
 
 export type User = typeof auth.$Infer.Session.user & {
-  username?: string | null; // Added by username plugin
+  username?: string | null;
+};
+
+export type Organization = {
+  id: string;
+  name: string;
+  slug: string;
+  logo?: string | null;
+  metadata?: string | null;
+  createdAt: string;
+};
+
+export type Team = {
+  id: string;
+  name: string;
+  organizationId: string;
+  parentTeamId?: string | null;
+  createdAt: string;
+  updatedAt?: string | null;
+};
+
+export type OrgMember = {
+  id: string;
+  organizationId: string;
+  userId: string;
+  role: string;
+  createdAt: string;
 };

@@ -18,6 +18,8 @@ export function AppLayout({ children }: LayoutProps) {
         initialCollapsed={ctx.sidebarCollapsed}
         username={user.username ?? null}
         email={user.email}
+        activeOrg={ctx.activeOrganization}
+        activeTeam={ctx.activeTeam}
       />
       <AppMainContent>{children}</AppMainContent>
     </QueryClientProvider>

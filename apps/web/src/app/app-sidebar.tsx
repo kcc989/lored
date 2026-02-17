@@ -10,6 +10,7 @@ import {
 } from '@phosphor-icons/react';
 import { useState, useEffect, createContext, useContext } from 'react';
 
+import { OrgSwitcher } from '@/components/org/org-switcher';
 import {
   Tooltip,
   TooltipContent,
@@ -38,6 +39,17 @@ type AppSidebarProps = {
   username: string | null;
   email?: string;
   initialCollapsed: boolean;
+  activeOrg: {
+    id: string;
+    name: string;
+    slug: string;
+    role: string;
+  } | null;
+  activeTeam: {
+    id: string;
+    name: string;
+    parentTeamId: string | null;
+  } | null;
 };
 
 type NavItemProps = {
@@ -191,6 +203,8 @@ export function AppSidebar({
   username,
   email,
   initialCollapsed,
+  activeOrg,
+  activeTeam,
 }: AppSidebarProps) {
   const [collapsed, setCollapsed] = useState(initialCollapsed);
 
@@ -277,6 +291,20 @@ export function AppSidebar({
                 </p>
               </>
             )}
+          </div>
+
+          {/* Org Switcher */}
+          <div
+            className={cn(
+              'border-b border-sidebar-border/50 py-2 transition-all duration-300',
+              collapsed ? 'px-3' : 'px-3'
+            )}
+          >
+            <OrgSwitcher
+              activeOrg={activeOrg}
+              activeTeam={activeTeam}
+              collapsed={collapsed}
+            />
           </div>
 
           {/* Navigation */}
