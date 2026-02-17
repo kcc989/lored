@@ -8,3 +8,12 @@ declare module 'cloudflare:workers' {
     GITHUB_CLIENT_SECRET: string;
   }
 }
+
+// Also extend the global Cloudflare.Env (used by worker-configuration.d.ts)
+declare namespace Cloudflare {
+  interface Env {
+    BETTER_AUTH_SECRET: string;
+    GITHUB_CLIENT_ID: string;
+    GITHUB_CLIENT_SECRET: string;
+  }
+}

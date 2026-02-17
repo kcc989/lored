@@ -3,6 +3,7 @@ import { realtimeRoute } from 'rwsdk/realtime/worker';
 import { layout, prefix, render, route } from 'rwsdk/router';
 import { defineApp, type RequestInfo } from 'rwsdk/worker';
 
+import { internalRoutes } from './app/api/internal/routes';
 import { userRoutes, avatarRoutes } from './app/api/users/routes';
 import { AppLayout } from './app/app-layout';
 import { getSidebarCollapsed } from './lib/sidebar';
@@ -61,7 +62,7 @@ const app = defineApp<RequestInfo<Record<string, string>, AppContext>>([
     return response;
   }),
   realtimeRoute(() => env.REALTIME_DURABLE_OBJECT),
-  prefix('/api', [userRoutes, avatarRoutes]),
+  prefix('/api', [internalRoutes, userRoutes, avatarRoutes]),
   render(Document, [
     route('/', Home),
     route('/login', Login),
