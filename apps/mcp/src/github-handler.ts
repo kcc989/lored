@@ -175,6 +175,12 @@ app.get('/callback', async (c) => {
 
 	const loredUser = (await loredResponse.json()) as LoredUser;
 
+	// Fetch orgs+teams for this user via service binding
+	const orgsResponse = await c.env.WEB_APP.fetch(
+		new Request(`http://internal/api/internal/users/${loredUser.id}/organizations`),
+	);
+	const organizations = orgsResponse.ok ? await orgsResponse.json() : [];
+
 	// Return back to the MCP client a new token
 	const { redirectTo } = await c.env.OAUTH_PROVIDER.completeAuthorization({
 		metadata: {
@@ -186,6 +192,7 @@ app.get('/callback', async (c) => {
 			login,
 			loredUserId: loredUser.id,
 			name,
+			organizations,
 			username: loredUser.username,
 		} as Props,
 		request: oauthReqInfo,

@@ -13,9 +13,12 @@ import { Document } from '@/app/Document';
 import { setCommonHeaders } from '@/app/headers';
 import { Home } from '@/app/pages/Home';
 import { Login } from '@/app/pages/Login';
+import { OrgSelect } from '@/app/pages/OrgSelect';
+import { OrgSettings } from '@/app/pages/OrgSettings';
 import { Settings } from '@/app/pages/Settings';
 import type { Session, User } from '@/lib/auth';
 import { createAuth } from '@/lib/auth';
+import { db } from '@/db';
 
 export { Database } from '@/db/centralDbDurableObject';
 export { RealtimeDurableObject } from 'rwsdk/realtime/durableObject';
@@ -25,6 +28,17 @@ export type AppContext = {
   user: User | null;
   theme: 'light' | 'dark';
   sidebarCollapsed: boolean;
+  activeOrganization: {
+    id: string;
+    name: string;
+    slug: string;
+    role: string;
+  } | null;
+  activeTeam: {
+    id: string;
+    name: string;
+    parentTeamId: string | null;
+  } | null;
 };
 
 let auth: ReturnType<typeof createAuth> | null = null;
@@ -40,6 +54,58 @@ const app = defineApp<RequestInfo<Record<string, string>, AppContext>>([
     ctx.user = session?.user || null;
     ctx.theme = getTheme(request);
     ctx.sidebarCollapsed = getSidebarCollapsed(request);
+    ctx.activeOrganization = null;
+    ctx.activeTeam = null;
+
+    // Resolve active organization from session
+    if (session?.session?.activeOrganizationId && session.user) {
+      const orgMember = await db
+        .selectFrom('member')
+        .innerJoin('organization', 'organization.id', 'member.organizationId')
+        .where('member.userId', '=', session.user.id)
+        .where(
+          'member.organizationId',
+          '=',
+          session.session.activeOrganizationId
+        )
+        .select([
+          'organization.id',
+          'organization.name',
+          'organization.slug',
+          'member.role',
+        ])
+        .executeTakeFirst();
+
+      if (orgMember) {
+        ctx.activeOrganization = {
+          id: orgMember.id,
+          name: orgMember.name,
+          slug: orgMember.slug,
+          role: orgMember.role,
+        };
+      }
+    }
+
+    // Resolve active team from session
+    if (
+      session?.session?.activeTeamId &&
+      ctx.activeOrganization
+    ) {
+      const team = await db
+        .selectFrom('team')
+        .where('team.id', '=', session.session.activeTeamId)
+        .where('team.organizationId', '=', ctx.activeOrganization.id)
+        .select(['team.id', 'team.name', 'team.parentTeamId'])
+        .executeTakeFirst();
+
+      if (team) {
+        ctx.activeTeam = {
+          id: team.id,
+          name: team.name,
+          parentTeamId: team.parentTeamId ?? null,
+        };
+      }
+    }
   },
   route('/api/auth/*', async ({ request }) => {
     if (!auth) {
@@ -66,7 +132,11 @@ const app = defineApp<RequestInfo<Record<string, string>, AppContext>>([
   render(Document, [
     route('/', Home),
     route('/login', Login),
-    layout(AppLayout, [route('/settings', Settings)]),
+    route('/org/select', OrgSelect),
+    layout(AppLayout, [
+      route('/settings', Settings),
+      route('/org/settings', OrgSettings),
+    ]),
   ]),
 ]);
 

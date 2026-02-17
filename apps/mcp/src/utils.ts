@@ -71,6 +71,17 @@ export type Props = {
 	email: string;
 	username: string | null;
 	accessToken: string;
+	organizations: Array<{
+		id: string;
+		name: string;
+		slug: string;
+		role: string;
+		teams: Array<{
+			id: string;
+			name: string;
+			parentTeamId: string | null;
+		}>;
+	}>;
 };
 
 // Response shape from the web app's internal user lookup endpoint
