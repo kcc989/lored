@@ -147,11 +147,11 @@ const config = [
   },
   {
     ignores: [
-      'node_modules/**',
-      'dist/**',
-      'build/**',
-      '.wrangler/**',
-      '.tmp/**',
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/build/**',
+      '**/.wrangler/**',
+      '**/.tmp/**',
       '*.config.js',
       '*.config.ts',
     ],

@@ -1,0 +1,47 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+
+  "name": "lored-mcp",
+  "main": "src/index.ts",
+
+  "compatibility_date": "2025-08-21",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MCP_OBJECT",
+        "class_name": "MyMCP"
+      }
+    ]
+  },
+
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["MyMCP"]
+    }
+  ],
+
+  "kv_namespaces": [
+    {
+      "binding": "OAUTH_KV",
+      "id": "<ADD-KV-NAMESPACE-ID>"
+    }
+  ],
+
+  "observability": {
+    "enabled": true
+  },
+
+  "services": [
+    {
+      "binding": "WEB_APP",
+      "service": "lored-web"
+    }
+  ],
+
+  "dev": {
+    "port": 8788
+  }
+}
