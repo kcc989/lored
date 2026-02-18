@@ -7,6 +7,12 @@ export interface CreateFactInput {
   brainId: string;
   content: string;
   type?: string;
+  status?: string;
+  trustScore?: number;
+  sourceAuthority?: number;
+  extractionConfidence?: number;
+  corroborationCount?: number;
+  sourceCount?: number;
   sources?: Array<{
     sourceType: 'document' | 'link' | 'person';
     title?: string;
@@ -39,6 +45,12 @@ export async function createFact(
   const factId = nanoid();
   const versionId = nanoid();
   const type = input.type ?? 'general';
+  const status = input.status ?? 'active';
+  const trustScore = input.trustScore ?? 0.5;
+  const sourceAuthority = input.sourceAuthority ?? 0.9;
+  const extractionConfidence = input.extractionConfidence ?? 1.0;
+  const corroborationCount = input.corroborationCount ?? 0;
+  const sourceCount = input.sourceCount ?? 1;
 
   // Insert fact
   await factsDb
@@ -48,8 +60,12 @@ export async function createFact(
       brainId: input.brainId,
       content: input.content,
       type,
-      status: 'active',
-      trustScore: 0.5,
+      status,
+      trustScore,
+      sourceAuthority,
+      extractionConfidence,
+      corroborationCount,
+      sourceCount,
       citationCount: 0,
       questionCount: 0,
       createdAt: now,
@@ -121,8 +137,8 @@ export async function createFact(
       id: factId,
       content: input.content,
       type,
-      status: 'active',
-      trustScore: 0.5,
+      status,
+      trustScore,
       createdAt: now,
       updatedAt: now,
     },

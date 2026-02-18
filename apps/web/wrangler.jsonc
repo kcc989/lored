@@ -17,11 +17,15 @@
     "binding": "ASSETS",
   },
 
-  // R2 bucket for avatar storage
+  // R2 buckets
   "r2_buckets": [
     {
       "binding": "AVATAR_BUCKET",
       "bucket_name": "user-avatars",
+    },
+    {
+      "binding": "INGESTION_BUCKET",
+      "bucket_name": "ingestion-files",
     },
   ],
 

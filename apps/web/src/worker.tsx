@@ -5,6 +5,7 @@ import { defineApp, type RequestInfo } from 'rwsdk/worker';
 
 import { brainRoutes } from './app/api/brains/routes';
 import { factRoutes, searchRoutes } from './app/api/facts/routes';
+import { ingestionRoutes } from './app/api/ingestion/routes';
 import { internalRoutes } from './app/api/internal/routes';
 import { userRoutes, avatarRoutes } from './app/api/users/routes';
 import { AppLayout } from './app/app-layout';
@@ -141,7 +142,7 @@ const app = defineApp<RequestInfo<Record<string, string>, AppContext>>([
     return response;
   }),
   realtimeRoute(() => env.REALTIME_DURABLE_OBJECT),
-  prefix('/api', [internalRoutes, userRoutes, avatarRoutes, brainRoutes, factRoutes, searchRoutes]),
+  prefix('/api', [internalRoutes, userRoutes, avatarRoutes, brainRoutes, factRoutes, searchRoutes, ingestionRoutes]),
   render(Document, [
     route('/', Home),
     route('/login', Login),
