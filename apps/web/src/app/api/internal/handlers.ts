@@ -1,6 +1,12 @@
+import { env } from 'cloudflare:workers';
 import type { RequestInfo } from 'rwsdk/worker';
+import { z } from 'zod';
 
 import { db } from '@/db';
+import { getFactsDb } from '@/db/facts';
+import { getBrain } from '@/lib/services/brain-service';
+import { getCachedTeamMemberships } from '@/lib/services/team-membership-cache';
+import { searchFacts } from '@/lib/services/fact-search-service';
 
 /**
  * Look up a lored user by their GitHub account ID.
@@ -90,4 +96,59 @@ export async function getUserOrganizations({
   );
 
   return Response.json(result);
+}
+
+// --- Search ---
+
+const internalSearchSchema = z.object({
+  userId: z.string().min(1),
+  organizationId: z.string().min(1),
+  brainId: z.string().min(1),
+  queries: z.array(z.string().min(1)).min(1),
+  type: z.enum(['general', 'policy', 'procedure', 'definition', 'decision', 'insight']).optional(),
+  status: z.string().optional(),
+  minTrustScore: z.number().min(0).max(1).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+});
+
+/**
+ * Search facts within a single brain.
+ * Used by the MCP server via service binding.
+ * Validates the user has access to the brain's team before searching.
+ */
+export async function searchBrainInternal({
+  request,
+}: RequestInfo): Promise<Response> {
+  const body = await request.json();
+  const input = internalSearchSchema.parse(body);
+
+  const factsDb = getFactsDb(input.organizationId);
+
+  // Verify the brain exists and get its team
+  const brain = await getBrain(factsDb, input.brainId);
+  if (!brain) {
+    return Response.json({ error: 'Brain not found' }, { status: 404 });
+  }
+
+  // Verify the user has access via team membership
+  const memberships = await getCachedTeamMemberships(
+    factsDb,
+    input.userId,
+    input.organizationId,
+  );
+  const teamIds = new Set(memberships.map((m) => m.teamId));
+  if (!teamIds.has(brain.teamId)) {
+    return Response.json({ error: 'Access denied' }, { status: 403 });
+  }
+
+  const results = await searchFacts(env, factsDb, {
+    brainId: input.brainId,
+    queries: input.queries,
+    type: input.type,
+    status: input.status,
+    minTrustScore: input.minTrustScore,
+    limit: input.limit,
+  });
+
+  return Response.json(results);
 }
