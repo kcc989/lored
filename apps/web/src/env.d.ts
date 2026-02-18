@@ -6,6 +6,13 @@ declare module 'cloudflare:workers' {
     BETTER_AUTH_SECRET: string;
     GITHUB_CLIENT_ID: string;
     GITHUB_CLIENT_SECRET: string;
+    // ChromaDB Cloud
+    CHROMA_HOST: string;
+    CHROMA_API_KEY: string;
+    CHROMA_TENANT: string;
+    CHROMA_DATABASE: string;
+    // Jina AI embeddings
+    JINA_API_KEY: string;
   }
 }
 
@@ -15,5 +22,12 @@ declare namespace Cloudflare {
     BETTER_AUTH_SECRET: string;
     GITHUB_CLIENT_ID: string;
     GITHUB_CLIENT_SECRET: string;
+    // ChromaDB Cloud
+    CHROMA_HOST: string;
+    CHROMA_API_KEY: string;
+    CHROMA_TENANT: string;
+    CHROMA_DATABASE: string;
+    // Jina AI embeddings
+    JINA_API_KEY: string;
   }
 }

@@ -45,6 +45,10 @@
         "name": "REALTIME_DURABLE_OBJECT",
         "class_name": "RealtimeDurableObject",
       },
+      {
+        "name": "FACTS_DATABASE",
+        "class_name": "FactsDatabase",
+      },
     ],
   },
 
@@ -56,6 +60,10 @@
     {
       "tag": "v2",
       "new_classes": ["RealtimeDurableObject"],
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["FactsDatabase"],
     },
   ],
 }
