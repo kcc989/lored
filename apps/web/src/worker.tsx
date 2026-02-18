@@ -3,6 +3,8 @@ import { realtimeRoute } from 'rwsdk/realtime/worker';
 import { layout, prefix, render, route } from 'rwsdk/router';
 import { defineApp, type RequestInfo } from 'rwsdk/worker';
 
+import { brainRoutes } from './app/api/brains/routes';
+import { factRoutes, searchRoutes } from './app/api/facts/routes';
 import { internalRoutes } from './app/api/internal/routes';
 import { userRoutes, avatarRoutes } from './app/api/users/routes';
 import { AppLayout } from './app/app-layout';
@@ -19,8 +21,10 @@ import { Settings } from '@/app/pages/Settings';
 import type { Session, User } from '@/lib/auth';
 import { createAuth } from '@/lib/auth';
 import { db } from '@/db';
+import type { FactsAppDatabase } from '@/db/facts';
 
 export { Database } from '@/db/centralDbDurableObject';
+export { FactsDatabase } from '@/db/factsDbDurableObject';
 export { RealtimeDurableObject } from 'rwsdk/realtime/durableObject';
 
 export type AppContext = {
@@ -39,6 +43,13 @@ export type AppContext = {
     name: string;
     parentTeamId: string | null;
   } | null;
+  factsDb: FactsAppDatabase | null;
+  activeBrain: {
+    id: string;
+    name: string;
+    teamId: string;
+    status: string;
+  } | null;
 };
 
 let auth: ReturnType<typeof createAuth> | null = null;
@@ -56,6 +67,8 @@ const app = defineApp<RequestInfo<Record<string, string>, AppContext>>([
     ctx.sidebarCollapsed = getSidebarCollapsed(request);
     ctx.activeOrganization = null;
     ctx.activeTeam = null;
+    ctx.factsDb = null;
+    ctx.activeBrain = null;
 
     // Resolve active organization from session
     if (session?.session?.activeOrganizationId && session.user) {
@@ -128,7 +141,7 @@ const app = defineApp<RequestInfo<Record<string, string>, AppContext>>([
     return response;
   }),
   realtimeRoute(() => env.REALTIME_DURABLE_OBJECT),
-  prefix('/api', [internalRoutes, userRoutes, avatarRoutes]),
+  prefix('/api', [internalRoutes, userRoutes, avatarRoutes, brainRoutes, factRoutes, searchRoutes]),
   render(Document, [
     route('/', Home),
     route('/login', Login),
