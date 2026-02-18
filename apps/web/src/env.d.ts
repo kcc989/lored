@@ -13,6 +13,8 @@ declare module 'cloudflare:workers' {
     CHROMA_DATABASE: string;
     // Jina AI embeddings
     JINA_API_KEY: string;
+    // Anthropic (extraction agent)
+    ANTHROPIC_API_KEY: string;
   }
 }
 
@@ -29,5 +31,7 @@ declare namespace Cloudflare {
     CHROMA_DATABASE: string;
     // Jina AI embeddings
     JINA_API_KEY: string;
+    // Anthropic (extraction agent)
+    ANTHROPIC_API_KEY: string;
   }
 }

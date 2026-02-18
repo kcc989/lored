@@ -7,6 +7,12 @@ import { getFactsDb } from '@/db/facts';
 import { getBrain } from '@/lib/services/brain-service';
 import { getCachedTeamMemberships } from '@/lib/services/team-membership-cache';
 import { searchFacts } from '@/lib/services/fact-search-service';
+import { ingestText } from '@/lib/services/ingestion-service';
+import { listTopics } from '@/lib/services/topic-service';
+import {
+  listTopicQuestions,
+  answerTopicQuestion,
+} from '@/lib/services/topic-question-service';
 
 /**
  * Look up a lored user by their GitHub account ID.
@@ -151,4 +157,140 @@ export async function searchBrainInternal({
   });
 
   return Response.json(results);
+}
+
+// --- Ingestion (internal, for MCP) ---
+
+/**
+ * Validate user has access to a brain. Shared by internal ingestion endpoints.
+ */
+async function validateBrainAccess(userId: string, organizationId: string, brainId: string) {
+  const factsDb = getFactsDb(organizationId);
+  const brain = await getBrain(factsDb, brainId);
+  if (!brain) return { error: 'Brain not found', status: 404 as const, factsDb, brain: null };
+
+  const memberships = await getCachedTeamMemberships(factsDb, userId, organizationId);
+  const teamIds = new Set(memberships.map((m) => m.teamId));
+  if (!teamIds.has(brain.teamId)) return { error: 'Access denied', status: 403 as const, factsDb, brain: null };
+
+  return { error: null, status: 200 as const, factsDb, brain };
+}
+
+const internalIngestTextSchema = z.object({
+  userId: z.string().min(1),
+  organizationId: z.string().min(1),
+  brainId: z.string().min(1),
+  text: z.string().min(1),
+  title: z.string().optional(),
+});
+
+export async function ingestTextInternal({
+  request,
+}: RequestInfo): Promise<Response> {
+  const body = await request.json();
+  const input = internalIngestTextSchema.parse(body);
+
+  const { error, status, factsDb } = await validateBrainAccess(
+    input.userId,
+    input.organizationId,
+    input.brainId,
+  );
+  if (error) return Response.json({ error }, { status });
+
+  const result = await ingestText(factsDb, env, {
+    brainId: input.brainId,
+    text: input.text,
+    title: input.title,
+    userId: input.userId,
+  });
+
+  return Response.json(result, { status: 201 });
+}
+
+// --- Topics (internal, for MCP) ---
+
+const internalBrainSchema = z.object({
+  userId: z.string().min(1),
+  organizationId: z.string().min(1),
+  brainId: z.string().min(1),
+});
+
+export async function listTopicsInternal({
+  request,
+}: RequestInfo): Promise<Response> {
+  const body = await request.json();
+  const input = internalBrainSchema.parse(body);
+
+  const { error, status, factsDb } = await validateBrainAccess(
+    input.userId,
+    input.organizationId,
+    input.brainId,
+  );
+  if (error) return Response.json({ error }, { status });
+
+  const topics = await listTopics(factsDb, input.brainId);
+  return Response.json(topics);
+}
+
+// --- Questions (internal, for MCP) ---
+
+const internalQuestionsSchema = z.object({
+  userId: z.string().min(1),
+  organizationId: z.string().min(1),
+  brainId: z.string().min(1),
+  topicId: z.string().optional(),
+  status: z.enum(['open', 'answered', 'dismissed']).optional(),
+});
+
+export async function listQuestionsInternal({
+  request,
+}: RequestInfo): Promise<Response> {
+  const body = await request.json();
+  const input = internalQuestionsSchema.parse(body);
+
+  const { error, status, factsDb } = await validateBrainAccess(
+    input.userId,
+    input.organizationId,
+    input.brainId,
+  );
+  if (error) return Response.json({ error }, { status });
+
+  const questions = await listTopicQuestions(factsDb, input.brainId, {
+    topicId: input.topicId,
+    status: input.status,
+  });
+  return Response.json(questions);
+}
+
+const internalAnswerSchema = z.object({
+  userId: z.string().min(1),
+  organizationId: z.string().min(1),
+  brainId: z.string().min(1),
+  questionId: z.string().min(1),
+  answer: z.string().min(1),
+  createFact: z.boolean().optional().default(true),
+});
+
+export async function answerQuestionInternal({
+  request,
+}: RequestInfo): Promise<Response> {
+  const body = await request.json();
+  const input = internalAnswerSchema.parse(body);
+
+  const { error, status, factsDb } = await validateBrainAccess(
+    input.userId,
+    input.organizationId,
+    input.brainId,
+  );
+  if (error) return Response.json({ error }, { status });
+
+  const result = await answerTopicQuestion(factsDb, env, {
+    questionId: input.questionId,
+    answer: input.answer,
+    answeredBy: input.userId,
+    createFactFromAnswer: input.createFact,
+    brainId: input.brainId,
+  });
+
+  return Response.json(result);
 }

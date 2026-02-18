@@ -1,6 +1,14 @@
 import { prefix, route } from 'rwsdk/router';
 
-import { getUserByGitHubAccount, getUserOrganizations, searchBrainInternal } from './handlers';
+import {
+  getUserByGitHubAccount,
+  getUserOrganizations,
+  searchBrainInternal,
+  ingestTextInternal,
+  listTopicsInternal,
+  listQuestionsInternal,
+  answerQuestionInternal,
+} from './handlers';
 
 export const internalRoutes = prefix('/internal', [
   route('/users/by-github/:accountId', {
@@ -11,5 +19,17 @@ export const internalRoutes = prefix('/internal', [
   }),
   route('/search/facts', {
     post: searchBrainInternal,
+  }),
+  route('/ingest/text', {
+    post: ingestTextInternal,
+  }),
+  route('/topics', {
+    post: listTopicsInternal,
+  }),
+  route('/questions', {
+    post: listQuestionsInternal,
+  }),
+  route('/questions/answer', {
+    post: answerQuestionInternal,
   }),
 ]);

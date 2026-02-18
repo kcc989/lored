@@ -1,0 +1,54 @@
+import { prefix, route } from 'rwsdk/router';
+
+import {
+  handleIngestText,
+  handleIngestFile,
+  handleListIngestions,
+  handleGetIngestion,
+  handleListTopics,
+  handleGetTopic,
+  handleListTopicQuestions,
+  handleAnswerQuestion,
+  handleDismissQuestion,
+} from './handlers';
+
+import { requireAuth } from '@/lib/middleware/auth';
+import { requireOrg } from '@/lib/middleware/org';
+import { requireBrainAccess } from '@/lib/middleware/brain';
+
+const brainGuard = [requireAuth, requireOrg, requireBrainAccess];
+
+export const ingestionRoutes = prefix('/brains/:brainId', [
+  // Ingestion
+  route('/ingest/text', {
+    post: [...brainGuard, handleIngestText],
+  }),
+  route('/ingest/file', {
+    post: [...brainGuard, handleIngestFile],
+  }),
+  route('/ingestions', {
+    get: [...brainGuard, handleListIngestions],
+  }),
+  route('/ingestions/:ingestionId', {
+    get: [...brainGuard, handleGetIngestion],
+  }),
+
+  // Topics
+  route('/topics', {
+    get: [...brainGuard, handleListTopics],
+  }),
+  route('/topics/:topicId', {
+    get: [...brainGuard, handleGetTopic],
+  }),
+
+  // Topic Questions
+  route('/questions', {
+    get: [...brainGuard, handleListTopicQuestions],
+  }),
+  route('/questions/:questionId/answer', {
+    post: [...brainGuard, handleAnswerQuestion],
+  }),
+  route('/questions/:questionId/dismiss', {
+    post: [...brainGuard, handleDismissQuestion],
+  }),
+]);

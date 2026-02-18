@@ -262,4 +262,221 @@ export const migrations = {
       await db.schema.dropTable('brain').ifExists().execute();
     },
   },
+
+  '002_ingestion_schema': {
+    async up(db) {
+      return [
+        // Add ingestion-related columns to fact table
+        await db.schema
+          .alterTable('fact')
+          .addColumn('sourceAuthority', 'real', (col) => col.defaultTo(0.9))
+          .execute(),
+        await db.schema
+          .alterTable('fact')
+          .addColumn('extractionConfidence', 'real', (col) =>
+            col.defaultTo(1.0)
+          )
+          .execute(),
+        await db.schema
+          .alterTable('fact')
+          .addColumn('corroborationCount', 'integer', (col) =>
+            col.defaultTo(0)
+          )
+          .execute(),
+        await db.schema
+          .alterTable('fact')
+          .addColumn('sourceCount', 'integer', (col) => col.defaultTo(1))
+          .execute(),
+
+        // ingestion table — tracks each raw input submission
+        await db.schema
+          .createTable('ingestion')
+          .addColumn('id', 'text', (col) => col.primaryKey())
+          .addColumn('brainId', 'text', (col) =>
+            col.notNull().references('brain.id').onDelete('cascade')
+          )
+          .addColumn('sourceType', 'text', (col) => col.notNull())
+          .addColumn('title', 'text')
+          .addColumn('rawText', 'text')
+          .addColumn('r2Key', 'text')
+          .addColumn('mimeType', 'text')
+          .addColumn('fileSizeBytes', 'integer')
+          .addColumn('status', 'text', (col) =>
+            col.notNull().defaultTo('pending')
+          )
+          .addColumn('factCount', 'integer', (col) =>
+            col.notNull().defaultTo(0)
+          )
+          .addColumn('errorMessage', 'text')
+          .addColumn('metadata', 'text')
+          .addColumn('createdAt', 'text', (col) => col.notNull())
+          .addColumn('updatedAt', 'text', (col) => col.notNull())
+          .addColumn('createdBy', 'text', (col) => col.notNull())
+          .execute(),
+
+        await db.schema
+          .createIndex('ingestion_brain_id_idx')
+          .on('ingestion')
+          .column('brainId')
+          .execute(),
+        await db.schema
+          .createIndex('ingestion_status_idx')
+          .on('ingestion')
+          .column('status')
+          .execute(),
+        await db.schema
+          .createIndex('ingestion_created_at_idx')
+          .on('ingestion')
+          .column('createdAt')
+          .execute(),
+
+        // ingestion_fact — links ingestions to produced facts
+        await db.schema
+          .createTable('ingestion_fact')
+          .addColumn('id', 'text', (col) => col.primaryKey())
+          .addColumn('ingestionId', 'text', (col) =>
+            col.notNull().references('ingestion.id').onDelete('cascade')
+          )
+          .addColumn('factId', 'text', (col) =>
+            col.notNull().references('fact.id').onDelete('cascade')
+          )
+          .addColumn('action', 'text', (col) => col.notNull())
+          .addColumn('extractionConfidence', 'real')
+          .addColumn('createdAt', 'text', (col) => col.notNull())
+          .execute(),
+
+        await db.schema
+          .createIndex('ingestion_fact_ingestion_idx')
+          .on('ingestion_fact')
+          .column('ingestionId')
+          .execute(),
+        await db.schema
+          .createIndex('ingestion_fact_fact_idx')
+          .on('ingestion_fact')
+          .column('factId')
+          .execute(),
+        await db.schema
+          .createIndex('ingestion_fact_unique_idx')
+          .on('ingestion_fact')
+          .columns(['ingestionId', 'factId'])
+          .unique()
+          .execute(),
+
+        // topic — knowledge areas within a brain
+        await db.schema
+          .createTable('topic')
+          .addColumn('id', 'text', (col) => col.primaryKey())
+          .addColumn('brainId', 'text', (col) =>
+            col.notNull().references('brain.id').onDelete('cascade')
+          )
+          .addColumn('name', 'text', (col) => col.notNull())
+          .addColumn('description', 'text')
+          .addColumn('factCount', 'integer', (col) =>
+            col.notNull().defaultTo(0)
+          )
+          .addColumn('coverageScore', 'real', (col) =>
+            col.notNull().defaultTo(0.0)
+          )
+          .addColumn('status', 'text', (col) =>
+            col.notNull().defaultTo('active')
+          )
+          .addColumn('createdAt', 'text', (col) => col.notNull())
+          .addColumn('updatedAt', 'text', (col) => col.notNull())
+          .execute(),
+
+        await db.schema
+          .createIndex('topic_brain_id_idx')
+          .on('topic')
+          .column('brainId')
+          .execute(),
+        await db.schema
+          .createIndex('topic_name_brain_idx')
+          .on('topic')
+          .columns(['brainId', 'name'])
+          .unique()
+          .execute(),
+
+        // topic_fact — many-to-many between facts and topics
+        await db.schema
+          .createTable('topic_fact')
+          .addColumn('id', 'text', (col) => col.primaryKey())
+          .addColumn('topicId', 'text', (col) =>
+            col.notNull().references('topic.id').onDelete('cascade')
+          )
+          .addColumn('factId', 'text', (col) =>
+            col.notNull().references('fact.id').onDelete('cascade')
+          )
+          .addColumn('relevance', 'real', (col) =>
+            col.notNull().defaultTo(1.0)
+          )
+          .addColumn('createdAt', 'text', (col) => col.notNull())
+          .execute(),
+
+        await db.schema
+          .createIndex('topic_fact_topic_idx')
+          .on('topic_fact')
+          .column('topicId')
+          .execute(),
+        await db.schema
+          .createIndex('topic_fact_fact_idx')
+          .on('topic_fact')
+          .column('factId')
+          .execute(),
+        await db.schema
+          .createIndex('topic_fact_unique_idx')
+          .on('topic_fact')
+          .columns(['topicId', 'factId'])
+          .unique()
+          .execute(),
+
+        // topic_question — generated questions for knowledge gaps
+        await db.schema
+          .createTable('topic_question')
+          .addColumn('id', 'text', (col) => col.primaryKey())
+          .addColumn('topicId', 'text', (col) =>
+            col.notNull().references('topic.id').onDelete('cascade')
+          )
+          .addColumn('brainId', 'text', (col) =>
+            col.notNull().references('brain.id').onDelete('cascade')
+          )
+          .addColumn('question', 'text', (col) => col.notNull())
+          .addColumn('priority', 'text', (col) =>
+            col.notNull().defaultTo('normal')
+          )
+          .addColumn('status', 'text', (col) =>
+            col.notNull().defaultTo('open')
+          )
+          .addColumn('answer', 'text')
+          .addColumn('answeredBy', 'text')
+          .addColumn('answeredAt', 'text')
+          .addColumn('createdAt', 'text', (col) => col.notNull())
+          .addColumn('updatedAt', 'text', (col) => col.notNull())
+          .execute(),
+
+        await db.schema
+          .createIndex('topic_question_topic_idx')
+          .on('topic_question')
+          .column('topicId')
+          .execute(),
+        await db.schema
+          .createIndex('topic_question_brain_idx')
+          .on('topic_question')
+          .column('brainId')
+          .execute(),
+        await db.schema
+          .createIndex('topic_question_status_idx')
+          .on('topic_question')
+          .column('status')
+          .execute(),
+      ];
+    },
+
+    async down(db) {
+      await db.schema.dropTable('topic_question').ifExists().execute();
+      await db.schema.dropTable('topic_fact').ifExists().execute();
+      await db.schema.dropTable('topic').ifExists().execute();
+      await db.schema.dropTable('ingestion_fact').ifExists().execute();
+      await db.schema.dropTable('ingestion').ifExists().execute();
+    },
+  },
 } satisfies Migrations;

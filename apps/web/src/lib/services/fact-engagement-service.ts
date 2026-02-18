@@ -2,21 +2,33 @@ import { nanoid } from 'nanoid';
 
 import type { FactsAppDatabase } from '@/db/facts';
 import { syncFactToChroma } from '@/lib/chromadb/sync';
+import { computeTrustScore } from '@/lib/services/trust-score-service';
 
 /**
- * Calculate trust score based on citations and questions.
- * Base 0.5, boosted by citations (max +0.3), penalized by open questions.
+ * Recalculate trust score for a fact using all available signals.
  */
-function calculateTrustScore(
-  citationCount: number,
-  questionCount: number,
+function recalculateTrustScore(
+  fact: {
+    extractionConfidence: number;
+    sourceAuthority: number;
+    sourceCount: number;
+    corroborationCount: number;
+    citationCount: number;
+    questionCount: number;
+    status: string;
+  },
   openQuestionCount: number
 ): number {
-  const base = 0.5;
-  const citationBoost = Math.min(citationCount * 0.02, 0.3);
-  const openPenalty = openQuestionCount * 0.1;
-  const resolvedPenalty = (questionCount - openQuestionCount) * 0.02;
-  return Math.max(0, Math.min(1, base + citationBoost - openPenalty - resolvedPenalty));
+  return computeTrustScore({
+    extractionConfidence: fact.extractionConfidence ?? 1.0,
+    sourceAuthority: fact.sourceAuthority ?? 0.9,
+    sourceCount: fact.sourceCount ?? 1,
+    corroborationCount: fact.corroborationCount ?? 0,
+    citationCount: fact.citationCount,
+    openQuestionCount,
+    totalQuestionCount: fact.questionCount,
+    hasConflict: fact.status === 'conflict',
+  });
 }
 
 /**
@@ -47,7 +59,6 @@ export async function recordCitation(
     })
     .execute();
 
-  // Increment citation count
   const fact = await factsDb
     .selectFrom('fact')
     .where('id', '=', input.factId)
@@ -56,7 +67,6 @@ export async function recordCitation(
 
   const newCitationCount = fact.citationCount + 1;
 
-  // Count open questions
   const openQuestions = await factsDb
     .selectFrom('fact_question')
     .where('factId', '=', input.factId)
@@ -65,9 +75,8 @@ export async function recordCitation(
     .executeTakeFirst();
 
   const openCount = Number(openQuestions?.count ?? 0);
-  const newTrustScore = calculateTrustScore(
-    newCitationCount,
-    fact.questionCount,
+  const newTrustScore = recalculateTrustScore(
+    { ...fact, citationCount: newCitationCount },
     openCount
   );
 
@@ -81,7 +90,6 @@ export async function recordCitation(
     .where('id', '=', input.factId)
     .execute();
 
-  // Sync updated trust score to ChromaDB
   const tags = await factsDb
     .selectFrom('fact_tag')
     .where('factId', '=', input.factId)
@@ -142,7 +150,6 @@ export async function questionFact(
 
   const newQuestionCount = fact.questionCount + 1;
 
-  // Count open questions (including the one we just inserted)
   const openQuestions = await factsDb
     .selectFrom('fact_question')
     .where('factId', '=', input.factId)
@@ -151,9 +158,8 @@ export async function questionFact(
     .executeTakeFirst();
 
   const openCount = Number(openQuestions?.count ?? 0);
-  const newTrustScore = calculateTrustScore(
-    fact.citationCount,
-    newQuestionCount,
+  const newTrustScore = recalculateTrustScore(
+    { ...fact, questionCount: newQuestionCount },
     openCount
   );
 
@@ -168,7 +174,6 @@ export async function questionFact(
     .where('id', '=', input.factId)
     .execute();
 
-  // Sync to ChromaDB
   const tags = await factsDb
     .selectFrom('fact_tag')
     .where('factId', '=', input.factId)
@@ -206,7 +211,6 @@ export async function resolveQuestion(
 ) {
   const now = new Date().toISOString();
 
-  // Update the question
   await factsDb
     .updateTable('fact_question')
     .set({
@@ -218,7 +222,6 @@ export async function resolveQuestion(
     .where('id', '=', input.questionId)
     .execute();
 
-  // Get the question to find the factId
   const question = await factsDb
     .selectFrom('fact_question')
     .where('id', '=', input.questionId)
@@ -231,12 +234,10 @@ export async function resolveQuestion(
     .selectAll()
     .executeTakeFirstOrThrow();
 
-  // Determine new fact status based on resolution
   let factStatus = fact.status;
   if (input.newStatus === 'resolved_deprecated') {
     factStatus = 'deprecated';
   } else {
-    // Check if there are still open questions
     const remaining = await factsDb
       .selectFrom('fact_question')
       .where('factId', '=', question.factId)
@@ -249,7 +250,6 @@ export async function resolveQuestion(
     }
   }
 
-  // Recalculate trust score
   const openQuestions = await factsDb
     .selectFrom('fact_question')
     .where('factId', '=', question.factId)
@@ -258,9 +258,8 @@ export async function resolveQuestion(
     .executeTakeFirst();
 
   const openCount = Number(openQuestions?.count ?? 0);
-  const newTrustScore = calculateTrustScore(
-    fact.citationCount,
-    fact.questionCount,
+  const newTrustScore = recalculateTrustScore(
+    { ...fact, status: factStatus },
     openCount
   );
 
@@ -274,7 +273,6 @@ export async function resolveQuestion(
     .where('id', '=', question.factId)
     .execute();
 
-  // Sync to ChromaDB
   const tags = await factsDb
     .selectFrom('fact_tag')
     .where('factId', '=', question.factId)

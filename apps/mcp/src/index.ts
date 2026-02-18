@@ -143,6 +143,206 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 				};
 			},
 		);
+
+		this.server.tool(
+			'ingest',
+			'Submit text to a brain for fact extraction. The system will analyze the text, extract structured facts, identify topics, detect duplicates, and generate questions for knowledge gaps.',
+			{
+				organizationId: z.string().describe('The organization ID the brain belongs to'),
+				brainId: z.string().describe('The brain ID to ingest text into'),
+				text: z.string().min(1).describe('The raw text content to extract facts from'),
+				title: z.string().optional().describe('Optional title describing the source of this text'),
+			},
+			async ({ organizationId, brainId, text, title }) => {
+				const org = this.props?.organizations?.find((o) => o.id === organizationId);
+				if (!org) {
+					return {
+						content: [
+							{ text: 'Organization not found or you do not have access', type: 'text' as const },
+						],
+						isError: true,
+					};
+				}
+
+				const response = await this.env.WEB_APP.fetch(
+					new Request('http://internal/api/internal/ingest/text', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							userId: this.props!.loredUserId,
+							organizationId,
+							brainId,
+							text,
+							title,
+						}),
+					}),
+				);
+
+				if (!response.ok) {
+					const errorText = await response.text();
+					return {
+						content: [{ text: `Ingestion failed: ${errorText}`, type: 'text' as const }],
+						isError: true,
+					};
+				}
+
+				const result = await response.json();
+				return {
+					content: [{ text: JSON.stringify(result), type: 'text' as const }],
+				};
+			},
+		);
+
+		this.server.tool(
+			'list-topics',
+			'List topics within a brain with their coverage scores. Topics represent knowledge areas that facts are organized under.',
+			{
+				organizationId: z.string().describe('The organization ID the brain belongs to'),
+				brainId: z.string().describe('The brain ID to list topics for'),
+			},
+			async ({ organizationId, brainId }) => {
+				const org = this.props?.organizations?.find((o) => o.id === organizationId);
+				if (!org) {
+					return {
+						content: [
+							{ text: 'Organization not found or you do not have access', type: 'text' as const },
+						],
+						isError: true,
+					};
+				}
+
+				const response = await this.env.WEB_APP.fetch(
+					new Request('http://internal/api/internal/topics', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							userId: this.props!.loredUserId,
+							organizationId,
+							brainId,
+						}),
+					}),
+				);
+
+				if (!response.ok) {
+					const errorText = await response.text();
+					return {
+						content: [{ text: `Failed to list topics: ${errorText}`, type: 'text' as const }],
+						isError: true,
+					};
+				}
+
+				const topics = await response.json();
+				return {
+					content: [{ text: JSON.stringify(topics), type: 'text' as const }],
+				};
+			},
+		);
+
+		this.server.tool(
+			'list-questions',
+			'List open questions needing answers within a brain. Questions are generated during ingestion to identify knowledge gaps.',
+			{
+				organizationId: z.string().describe('The organization ID the brain belongs to'),
+				brainId: z.string().describe('The brain ID to list questions for'),
+				topicId: z.string().optional().describe('Filter questions to a specific topic'),
+				status: z
+					.enum(['open', 'answered', 'dismissed'])
+					.optional()
+					.describe('Filter by question status (default: all)'),
+			},
+			async ({ organizationId, brainId, topicId, status }) => {
+				const org = this.props?.organizations?.find((o) => o.id === organizationId);
+				if (!org) {
+					return {
+						content: [
+							{ text: 'Organization not found or you do not have access', type: 'text' as const },
+						],
+						isError: true,
+					};
+				}
+
+				const response = await this.env.WEB_APP.fetch(
+					new Request('http://internal/api/internal/questions', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							userId: this.props!.loredUserId,
+							organizationId,
+							brainId,
+							topicId,
+							status,
+						}),
+					}),
+				);
+
+				if (!response.ok) {
+					const errorText = await response.text();
+					return {
+						content: [{ text: `Failed to list questions: ${errorText}`, type: 'text' as const }],
+						isError: true,
+					};
+				}
+
+				const questions = await response.json();
+				return {
+					content: [{ text: JSON.stringify(questions), type: 'text' as const }],
+				};
+			},
+		);
+
+		this.server.tool(
+			'answer-question',
+			'Answer a knowledge gap question. Optionally creates a new fact from the answer and ingests it into the brain.',
+			{
+				organizationId: z.string().describe('The organization ID the brain belongs to'),
+				brainId: z.string().describe('The brain ID the question belongs to'),
+				questionId: z.string().describe('The question ID to answer'),
+				answer: z.string().min(1).describe('The answer to the question'),
+				createFact: z
+					.boolean()
+					.optional()
+					.describe('Whether to create a fact from the answer (default: true)'),
+			},
+			async ({ organizationId, brainId, questionId, answer, createFact }) => {
+				const org = this.props?.organizations?.find((o) => o.id === organizationId);
+				if (!org) {
+					return {
+						content: [
+							{ text: 'Organization not found or you do not have access', type: 'text' as const },
+						],
+						isError: true,
+					};
+				}
+
+				const response = await this.env.WEB_APP.fetch(
+					new Request('http://internal/api/internal/questions/answer', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							userId: this.props!.loredUserId,
+							organizationId,
+							brainId,
+							questionId,
+							answer,
+							createFact,
+						}),
+					}),
+				);
+
+				if (!response.ok) {
+					const errorText = await response.text();
+					return {
+						content: [{ text: `Failed to answer question: ${errorText}`, type: 'text' as const }],
+						isError: true,
+					};
+				}
+
+				const result = await response.json();
+				return {
+					content: [{ text: JSON.stringify(result), type: 'text' as const }],
+				};
+			},
+		);
 	}
 }
 
