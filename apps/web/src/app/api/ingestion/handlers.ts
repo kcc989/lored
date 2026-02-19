@@ -6,8 +6,11 @@ import { NotFoundError, ValidationError } from '@/lib/errors';
 import {
   ingestText,
   ingestFile,
+  ingestGoogleDoc,
+  detectGoogleDocInText,
   getIngestion,
   listIngestions,
+  listIngestedDocuments,
 } from '@/lib/services/ingestion-service';
 import { listTopics, getTopic } from '@/lib/services/topic-service';
 import {
@@ -37,6 +40,29 @@ export async function handleIngestText({
 }: RequestInfo): Promise<Response> {
   const body = await request.json();
   const input = ingestTextSchema.parse(body);
+
+  // Auto-detect Google Doc URLs pasted as text
+  const googleDocUrl = detectGoogleDocInText(input.text);
+  if (googleDocUrl) {
+    const result = await ingestGoogleDoc(ctx.factsDb!, env, {
+      brainId: params.brainId,
+      documentUrl: googleDocUrl,
+      userId: ctx.user!.id,
+    });
+
+    // Check for structured error responses
+    if ('error' in result) {
+      const status = result.error === 'google_not_connected' ? 401
+        : result.error === 'google_access_denied' ? 403
+        : result.error === 'google_doc_not_found' ? 404
+        : result.error === 'google_doc_too_large' ? 413
+        : result.error === 'no_changes' ? 200
+        : 400;
+      return Response.json(result, { status });
+    }
+
+    return Response.json(result, { status: 201 });
+  }
 
   const result = await ingestText(ctx.factsDb!, env, {
     brainId: params.brainId,
@@ -206,4 +232,54 @@ export async function handleDismissQuestion({
 }: RequestInfo): Promise<Response> {
   await dismissTopicQuestion(ctx.factsDb!, params.questionId);
   return Response.json({ success: true });
+}
+
+// --- Google Docs Handlers ---
+
+const ingestGoogleDocSchema = z.object({
+  documentUrl: z.string().url(),
+});
+
+export async function handleIngestGoogleDoc({
+  request,
+  ctx,
+  params,
+}: RequestInfo): Promise<Response> {
+  const body = await request.json();
+  const input = ingestGoogleDocSchema.parse(body);
+
+  const result = await ingestGoogleDoc(ctx.factsDb!, env, {
+    brainId: params.brainId,
+    documentUrl: input.documentUrl,
+    userId: ctx.user!.id,
+  });
+
+  if ('error' in result) {
+    const status = result.error === 'google_not_connected' ? 401
+      : result.error === 'google_access_denied' ? 403
+      : result.error === 'google_doc_not_found' ? 404
+      : result.error === 'google_doc_too_large' ? 413
+      : result.error === 'no_changes' ? 200
+      : 400;
+    return Response.json(result, { status });
+  }
+
+  return Response.json(result, { status: 201 });
+}
+
+export async function handleListIngestedDocuments({
+  ctx,
+  params,
+  request,
+}: RequestInfo): Promise<Response> {
+  const url = new URL(request.url);
+  const page = Number(url.searchParams.get('page') ?? 1);
+  const limit = Number(url.searchParams.get('limit') ?? 20);
+
+  const documents = await listIngestedDocuments(ctx.factsDb!, params.brainId, {
+    page,
+    limit,
+  });
+
+  return Response.json(documents);
 }

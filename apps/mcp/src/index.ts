@@ -12,6 +12,104 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 		version: '1.0.0',
 	});
 
+	private async ingestGoogleDocViaInternal(
+		organizationId: string,
+		brainId: string,
+		documentUrl: string,
+	) {
+		const response = await this.env.WEB_APP.fetch(
+			new Request('http://internal/api/internal/ingest/google-doc', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					userId: this.props!.loredUserId,
+					organizationId,
+					brainId,
+					documentUrl,
+				}),
+			}),
+		);
+
+		if (!response.ok) {
+			const errorBody = (await response.json().catch(() => null)) as {
+				error?: string;
+				message?: string;
+				connectUrl?: string;
+			} | null;
+
+			if (errorBody?.error === 'google_not_connected') {
+				return {
+					content: [
+						{
+							text: 'You need to connect your Google account first. Visit your Lored settings page to connect your Google account, then try again.',
+							type: 'text' as const,
+						},
+					],
+					isError: true,
+				};
+			}
+
+			if (errorBody?.error === 'google_token_expired') {
+				return {
+					content: [
+						{
+							text: 'Your Google connection has expired. Please reconnect your Google account in settings, then try again.',
+							type: 'text' as const,
+						},
+					],
+					isError: true,
+				};
+			}
+
+			if (errorBody?.error === 'google_access_denied') {
+				return {
+					content: [
+						{
+							text: 'Your Google account cannot access this document. Make sure the document is shared with your Google account.',
+							type: 'text' as const,
+						},
+					],
+					isError: true,
+				};
+			}
+
+			if (errorBody?.error === 'google_doc_not_found') {
+				return {
+					content: [
+						{
+							text: 'Document not found. Check that the URL is correct and the document hasn\'t been deleted.',
+							type: 'text' as const,
+						},
+					],
+					isError: true,
+				};
+			}
+
+			if (errorBody?.error === 'google_doc_too_large') {
+				return {
+					content: [
+						{
+							text: errorBody.message ?? 'Document exceeds the size limit for ingestion.',
+							type: 'text' as const,
+						},
+					],
+					isError: true,
+				};
+			}
+
+			const errorText = errorBody?.message ?? `HTTP ${response.status}`;
+			return {
+				content: [{ text: `Google Doc ingestion failed: ${errorText}`, type: 'text' as const }],
+				isError: true,
+			};
+		}
+
+		const result = await response.json();
+		return {
+			content: [{ text: JSON.stringify(result), type: 'text' as const }],
+		};
+	}
+
 	async init() {
 		this.server.tool(
 			'add',
@@ -146,11 +244,16 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 
 		this.server.tool(
 			'ingest',
-			'Submit text to a brain for fact extraction. The system will analyze the text, extract structured facts, identify topics, detect duplicates, and generate questions for knowledge gaps.',
+			'Submit text or a Google Doc URL to a brain for fact extraction. The system will analyze the content, extract structured facts, identify topics, detect duplicates, and generate questions for knowledge gaps. If the text is a Google Doc URL, it will automatically fetch the document content.',
 			{
 				organizationId: z.string().describe('The organization ID the brain belongs to'),
 				brainId: z.string().describe('The brain ID to ingest text into'),
-				text: z.string().min(1).describe('The raw text content to extract facts from'),
+				text: z
+					.string()
+					.min(1)
+					.describe(
+						'The raw text content to extract facts from, or a Google Docs URL to fetch and ingest',
+					),
 				title: z.string().optional().describe('Optional title describing the source of this text'),
 			},
 			async ({ organizationId, brainId, text, title }) => {
@@ -162,6 +265,13 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 						],
 						isError: true,
 					};
+				}
+
+				// Auto-detect Google Doc URLs
+				const googleDocPattern =
+					/https?:\/\/docs\.google\.com\/document\/d\/[a-zA-Z0-9_-]+/;
+				if (googleDocPattern.test(text)) {
+					return this.ingestGoogleDocViaInternal(organizationId, brainId, text);
 				}
 
 				const response = await this.env.WEB_APP.fetch(
@@ -190,6 +300,32 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 				return {
 					content: [{ text: JSON.stringify(result), type: 'text' as const }],
 				};
+			},
+		);
+
+		this.server.tool(
+			'ingest-google-doc',
+			'Ingest a Google Doc into a brain for fact extraction. Fetches the document content using the authenticated user\'s Google connection, then extracts facts, topics, and questions. Requires the user to have connected their Google account.',
+			{
+				organizationId: z.string().describe('The organization ID the brain belongs to'),
+				brainId: z.string().describe('The brain ID to ingest the document into'),
+				documentUrl: z
+					.string()
+					.min(1)
+					.describe('The Google Docs URL (e.g. https://docs.google.com/document/d/...)'),
+			},
+			async ({ organizationId, brainId, documentUrl }) => {
+				const org = this.props?.organizations?.find((o) => o.id === organizationId);
+				if (!org) {
+					return {
+						content: [
+							{ text: 'Organization not found or you do not have access', type: 'text' as const },
+						],
+						isError: true,
+					};
+				}
+
+				return this.ingestGoogleDocViaInternal(organizationId, brainId, documentUrl);
 			},
 		);
 

@@ -3,8 +3,10 @@ import { prefix, route } from 'rwsdk/router';
 import {
   handleIngestText,
   handleIngestFile,
+  handleIngestGoogleDoc,
   handleListIngestions,
   handleGetIngestion,
+  handleListIngestedDocuments,
   handleListTopics,
   handleGetTopic,
   handleListTopicQuestions,
@@ -25,6 +27,12 @@ export const ingestionRoutes = prefix('/brains/:brainId', [
   }),
   route('/ingest/file', {
     post: [...brainGuard, handleIngestFile],
+  }),
+  route('/ingest/google-doc', {
+    post: [...brainGuard, handleIngestGoogleDoc],
+  }),
+  route('/ingested-documents', {
+    get: [...brainGuard, handleListIngestedDocuments],
   }),
   route('/ingestions', {
     get: [...brainGuard, handleListIngestions],

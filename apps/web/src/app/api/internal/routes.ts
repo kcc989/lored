@@ -5,6 +5,7 @@ import {
   getUserOrganizations,
   searchBrainInternal,
   ingestTextInternal,
+  ingestGoogleDocInternal,
   listTopicsInternal,
   listQuestionsInternal,
   answerQuestionInternal,
@@ -22,6 +23,9 @@ export const internalRoutes = prefix('/internal', [
   }),
   route('/ingest/text', {
     post: ingestTextInternal,
+  }),
+  route('/ingest/google-doc', {
+    post: ingestGoogleDocInternal,
   }),
   route('/topics', {
     post: listTopicsInternal,
