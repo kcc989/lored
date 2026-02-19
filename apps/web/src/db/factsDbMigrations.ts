@@ -479,4 +479,52 @@ export const migrations = {
       await db.schema.dropTable('ingestion').ifExists().execute();
     },
   },
+  '003_ingested_documents': {
+    async up(db) {
+      return [
+        await db.schema
+          .createTable('ingested_document')
+          .addColumn('id', 'text', (col) => col.primaryKey())
+          .addColumn('brainId', 'text', (col) =>
+            col.notNull().references('brain.id').onDelete('cascade')
+          )
+          .addColumn('provider', 'text', (col) => col.notNull())
+          .addColumn('externalDocumentId', 'text', (col) => col.notNull())
+          .addColumn('title', 'text')
+          .addColumn('documentUrl', 'text')
+          .addColumn('lastIngestionId', 'text')
+          .addColumn('lastModifiedAt', 'text')
+          .addColumn('lastIngestedAt', 'text', (col) => col.notNull())
+          .addColumn('contentHash', 'text')
+          .addColumn('ingestionCount', 'integer', (col) =>
+            col.notNull().defaultTo(1)
+          )
+          .addColumn('status', 'text', (col) =>
+            col.notNull().defaultTo('active')
+          )
+          .addColumn('metadata', 'text')
+          .addColumn('createdAt', 'text', (col) => col.notNull())
+          .addColumn('updatedAt', 'text', (col) => col.notNull())
+          .addColumn('createdBy', 'text', (col) => col.notNull())
+          .execute(),
+
+        await db.schema
+          .createIndex('ingested_doc_brain_idx')
+          .on('ingested_document')
+          .column('brainId')
+          .execute(),
+
+        await db.schema
+          .createIndex('ingested_doc_brain_provider_doc_idx')
+          .on('ingested_document')
+          .columns(['brainId', 'provider', 'externalDocumentId'])
+          .unique()
+          .execute(),
+      ];
+    },
+
+    async down(db) {
+      await db.schema.dropTable('ingested_document').ifExists().execute();
+    },
+  },
 } satisfies Migrations;

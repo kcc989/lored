@@ -20,6 +20,19 @@ import {
   updateCoverageScore,
 } from '@/lib/services/topic-service';
 import { createTopicQuestion } from '@/lib/services/topic-question-service';
+import {
+  getValidGoogleToken,
+  GoogleAuthError,
+} from '@/lib/services/google-auth-service';
+import {
+  parseGoogleDocUrl,
+  isGoogleDocUrl,
+  extractGoogleDocUrl,
+  getDocumentMetadata,
+  fetchDocumentContent,
+  GoogleDocError,
+  MAX_FILE_SIZE_BYTES,
+} from '@/lib/services/google-docs-service';
 
 // --- Types ---
 
@@ -36,6 +49,21 @@ export interface IngestFileInput {
   filename: string;
   mimeType: string;
   userId: string;
+}
+
+export interface IngestGoogleDocInput {
+  brainId: string;
+  documentUrl: string;
+  userId: string;
+}
+
+export interface GoogleDocErrorResult {
+  error: string;
+  message: string;
+  connectUrl?: string;
+  documentTitle?: string;
+  sizeBytes?: number;
+  maxSizeBytes?: number;
 }
 
 export interface IngestionResult {
@@ -148,7 +176,7 @@ async function processExtraction(
   env: Env,
   brainId: string,
   ingestionId: string,
-  sourceType: 'text_input' | 'document_upload' | 'image_upload',
+  sourceType: 'text_input' | 'document_upload' | 'image_upload' | 'google_doc',
   extractionInput: ExtractionInput,
   userId: string
 ): Promise<Omit<IngestionResult, 'ingestion'>> {
@@ -665,7 +693,282 @@ export async function listIngestions(
     .execute();
 }
 
+// --- Google Docs Ingestion ---
+
+/**
+ * Ingest a Google Doc by URL. Fetches the document content using the user's
+ * Google connection, then runs it through the standard extraction pipeline.
+ *
+ * Returns a GoogleDocErrorResult if there's a connection or access issue,
+ * or an IngestionResult on success.
+ */
+export async function ingestGoogleDoc(
+  factsDb: FactsAppDatabase,
+  env: Env,
+  input: IngestGoogleDocInput
+): Promise<IngestionResult | GoogleDocErrorResult> {
+  // 1. Parse the URL
+  const parsed = parseGoogleDocUrl(input.documentUrl);
+  if (!parsed) {
+    return {
+      error: 'invalid_url',
+      message: 'Not a valid Google Docs URL. Expected format: https://docs.google.com/document/d/.../edit',
+    };
+  }
+
+  // 2. Get a valid Google token
+  let accessToken: string;
+  try {
+    const result = await getValidGoogleToken(env, input.userId);
+    accessToken = result.accessToken;
+  } catch (err) {
+    if (err instanceof GoogleAuthError) {
+      if (err.code === 'google_not_connected') {
+        return {
+          error: 'google_not_connected',
+          message: 'Connect your Google account to ingest Google Docs.',
+          connectUrl: '/api/integrations/google/connect',
+        };
+      }
+      return {
+        error: err.code,
+        message: err.message,
+        connectUrl: '/api/integrations/google/connect',
+      };
+    }
+    throw err;
+  }
+
+  // 3. Fetch document metadata
+  let metadata;
+  try {
+    metadata = await getDocumentMetadata(accessToken, parsed.documentId);
+  } catch (err) {
+    if (err instanceof GoogleDocError) {
+      return {
+        error: err.code,
+        message: err.message,
+        ...err.details,
+      };
+    }
+    throw err;
+  }
+
+  // 4. Check raw file size limit
+  if (metadata.size && metadata.size > MAX_FILE_SIZE_BYTES) {
+    return {
+      error: 'google_doc_too_large',
+      message: `Document "${metadata.title}" is too large (${formatBytes(metadata.size)}). Maximum file size is ${formatBytes(MAX_FILE_SIZE_BYTES)}.`,
+      documentTitle: metadata.title,
+      sizeBytes: metadata.size,
+      maxSizeBytes: MAX_FILE_SIZE_BYTES,
+    };
+  }
+
+  // 5. Fetch content and check text size limit
+  let content;
+  try {
+    content = await fetchDocumentContent(accessToken, parsed.documentId);
+  } catch (err) {
+    if (err instanceof GoogleDocError) {
+      return {
+        error: err.code,
+        message: err.message,
+        documentTitle: metadata.title,
+        ...err.details,
+      };
+    }
+    throw err;
+  }
+
+  // 6. Check if already ingested with same content
+  const existing = await factsDb
+    .selectFrom('ingested_document')
+    .where('brainId', '=', input.brainId)
+    .where('provider', '=', 'google_docs')
+    .where('externalDocumentId', '=', parsed.documentId)
+    .selectAll()
+    .executeTakeFirst();
+
+  if (existing && existing.contentHash === content.contentHash) {
+    return {
+      error: 'no_changes',
+      message: `Document "${metadata.title}" has not changed since last ingestion.`,
+      documentTitle: metadata.title,
+    };
+  }
+
+  // 7. Create ingestion record and run extraction
+  const now = new Date().toISOString();
+  const ingestionId = nanoid();
+
+  const ingestionMetadata = JSON.stringify({
+    googleDocId: parsed.documentId,
+    googleDocUrl: input.documentUrl,
+    documentTitle: metadata.title,
+    lastModifiedTime: metadata.lastModifiedTime,
+    exportFormat: 'text/html',
+  });
+
+  await factsDb
+    .insertInto('ingestion')
+    .values({
+      id: ingestionId,
+      brainId: input.brainId,
+      sourceType: 'google_doc',
+      title: metadata.title,
+      rawText: content.text,
+      r2Key: null,
+      mimeType: 'application/vnd.google-apps.document',
+      fileSizeBytes: new TextEncoder().encode(content.text).length,
+      status: 'processing',
+      factCount: 0,
+      errorMessage: null,
+      metadata: ingestionMetadata,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: input.userId,
+    })
+    .execute();
+
+  try {
+    const { existingFacts, existingTopics } = await getExistingContext(
+      env,
+      factsDb,
+      input.brainId,
+      content.text.slice(0, 500)
+    );
+
+    const result = await processExtraction(
+      factsDb,
+      env,
+      input.brainId,
+      ingestionId,
+      'google_doc',
+      {
+        rawText: content.text,
+        sourceDescription: `Google Doc: ${metadata.title}`,
+        sourceType: 'google_doc',
+        existingFacts,
+        existingTopics,
+      },
+      input.userId
+    );
+
+    const factCount =
+      result.factsCreated.length + result.factsUpdated.length;
+
+    await factsDb
+      .updateTable('ingestion')
+      .set({
+        status: 'completed',
+        factCount,
+        updatedAt: new Date().toISOString(),
+      })
+      .where('id', '=', ingestionId)
+      .execute();
+
+    // 8. Upsert ingested_document record
+    if (existing) {
+      await factsDb
+        .updateTable('ingested_document')
+        .set({
+          title: metadata.title,
+          documentUrl: input.documentUrl,
+          lastIngestionId: ingestionId,
+          lastModifiedAt: metadata.lastModifiedTime,
+          lastIngestedAt: now,
+          contentHash: content.contentHash,
+          ingestionCount: factsDb.raw('ingestionCount + 1'),
+          updatedAt: now,
+        })
+        .where('id', '=', existing.id)
+        .execute();
+    } else {
+      await factsDb
+        .insertInto('ingested_document')
+        .values({
+          id: nanoid(),
+          brainId: input.brainId,
+          provider: 'google_docs',
+          externalDocumentId: parsed.documentId,
+          title: metadata.title,
+          documentUrl: input.documentUrl,
+          lastIngestionId: ingestionId,
+          lastModifiedAt: metadata.lastModifiedTime,
+          lastIngestedAt: now,
+          contentHash: content.contentHash,
+          ingestionCount: 1,
+          status: 'active',
+          metadata: JSON.stringify({ owners: metadata.owners }),
+          createdAt: now,
+          updatedAt: now,
+          createdBy: input.userId,
+        })
+        .execute();
+    }
+
+    return {
+      ingestion: { id: ingestionId, status: 'completed', factCount },
+      ...result,
+    };
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error';
+    await factsDb
+      .updateTable('ingestion')
+      .set({
+        status: 'failed',
+        errorMessage,
+        updatedAt: new Date().toISOString(),
+      })
+      .where('id', '=', ingestionId)
+      .execute();
+    throw error;
+  }
+}
+
+/**
+ * Check if text input is a Google Doc URL and should be routed to Google Doc ingestion.
+ */
+export function detectGoogleDocInText(text: string): string | null {
+  const trimmed = text.trim();
+  // Only auto-detect if the entire input looks like a URL or starts with one
+  if (isGoogleDocUrl(trimmed)) {
+    return extractGoogleDocUrl(trimmed);
+  }
+  return null;
+}
+
+/**
+ * List ingested documents for a brain.
+ */
+export async function listIngestedDocuments(
+  factsDb: FactsAppDatabase,
+  brainId: string,
+  options: { page?: number; limit?: number } = {}
+) {
+  const { page = 1, limit = 20 } = options;
+  const offset = (page - 1) * limit;
+
+  return factsDb
+    .selectFrom('ingested_document')
+    .where('brainId', '=', brainId)
+    .where('status', '=', 'active')
+    .selectAll()
+    .orderBy('lastIngestedAt', 'desc')
+    .limit(limit)
+    .offset(offset)
+    .execute();
+}
+
 // --- Helpers ---
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);

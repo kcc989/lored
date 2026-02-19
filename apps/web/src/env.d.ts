@@ -15,6 +15,9 @@ declare module 'cloudflare:workers' {
     JINA_API_KEY: string;
     // Anthropic (extraction agent)
     ANTHROPIC_API_KEY: string;
+    // Google OAuth (for Google Docs integration)
+    GOOGLE_CLIENT_ID: string;
+    GOOGLE_CLIENT_SECRET: string;
   }
 }
 
@@ -33,5 +36,8 @@ declare namespace Cloudflare {
     JINA_API_KEY: string;
     // Anthropic (extraction agent)
     ANTHROPIC_API_KEY: string;
+    // Google OAuth (for Google Docs integration)
+    GOOGLE_CLIENT_ID: string;
+    GOOGLE_CLIENT_SECRET: string;
   }
 }

@@ -268,4 +268,50 @@ export const migrations = {
       // activeOrganizationId and activeTeamId on session would require table rebuild to remove.
     },
   },
+  '003_integration_connections': {
+    async up(db) {
+      return [
+        await db.schema
+          .createTable('integration_connection')
+          .addColumn('id', 'text', (col) => col.primaryKey())
+          .addColumn('userId', 'text', (col) =>
+            col.notNull().references('user.id').onDelete('cascade')
+          )
+          .addColumn('provider', 'text', (col) => col.notNull())
+          .addColumn('providerAccountId', 'text', (col) => col.notNull())
+          .addColumn('accessToken', 'text', (col) => col.notNull())
+          .addColumn('refreshToken', 'text')
+          .addColumn('tokenExpiresAt', 'text')
+          .addColumn('scope', 'text')
+          .addColumn('status', 'text', (col) => col.notNull().defaultTo('active'))
+          .addColumn('metadata', 'text')
+          .addColumn('createdAt', 'text', (col) => col.notNull())
+          .addColumn('updatedAt', 'text', (col) => col.notNull())
+          .execute(),
+
+        await db.schema
+          .createIndex('ic_user_idx')
+          .on('integration_connection')
+          .column('userId')
+          .execute(),
+
+        await db.schema
+          .createIndex('ic_user_provider_account_idx')
+          .on('integration_connection')
+          .columns(['userId', 'provider', 'providerAccountId'])
+          .unique()
+          .execute(),
+
+        await db.schema
+          .createIndex('ic_provider_idx')
+          .on('integration_connection')
+          .column('provider')
+          .execute(),
+      ];
+    },
+
+    async down(db) {
+      await db.schema.dropTable('integration_connection').ifExists().execute();
+    },
+  },
 } satisfies Migrations;

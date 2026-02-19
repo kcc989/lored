@@ -7,7 +7,7 @@ import { getFactsDb } from '@/db/facts';
 import { getBrain } from '@/lib/services/brain-service';
 import { getCachedTeamMemberships } from '@/lib/services/team-membership-cache';
 import { searchFacts } from '@/lib/services/fact-search-service';
-import { ingestText } from '@/lib/services/ingestion-service';
+import { ingestText, ingestGoogleDoc } from '@/lib/services/ingestion-service';
 import { listTopics } from '@/lib/services/topic-service';
 import {
   listTopicQuestions,
@@ -293,4 +293,46 @@ export async function answerQuestionInternal({
   });
 
   return Response.json(result);
+}
+
+// --- Google Doc Ingestion (internal, for MCP) ---
+
+const internalIngestGoogleDocSchema = z.object({
+  userId: z.string().min(1),
+  organizationId: z.string().min(1),
+  brainId: z.string().min(1),
+  documentUrl: z.string().min(1),
+});
+
+export async function ingestGoogleDocInternal({
+  request,
+}: RequestInfo): Promise<Response> {
+  const body = await request.json();
+  const input = internalIngestGoogleDocSchema.parse(body);
+
+  const { error, status, factsDb } = await validateBrainAccess(
+    input.userId,
+    input.organizationId,
+    input.brainId,
+  );
+  if (error) return Response.json({ error }, { status });
+
+  const result = await ingestGoogleDoc(factsDb, env, {
+    brainId: input.brainId,
+    documentUrl: input.documentUrl,
+    userId: input.userId,
+  });
+
+  if ('error' in result) {
+    const statusMap: Record<string, number> = {
+      google_not_connected: 401,
+      google_token_expired: 401,
+      google_access_denied: 403,
+      google_doc_not_found: 404,
+      google_doc_too_large: 413,
+    };
+    return Response.json(result, { status: statusMap[result.error] ?? 400 });
+  }
+
+  return Response.json(result, { status: 201 });
 }
