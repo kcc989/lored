@@ -1,12 +1,26 @@
 'use client';
 
-import { PlusIcon } from '@phosphor-icons/react';
+import { DotsThreeVerticalIcon, PlusIcon } from '@phosphor-icons/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { toast } from 'sonner';
 
 import { CreateTeamDialog } from './create-team-dialog';
+import { InviteMemberDialog } from './invite-member-dialog';
+import { TeamDetailPanel } from './team-detail-panel';
 import { TeamTree } from './team-tree';
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -15,6 +29,14 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
@@ -43,6 +65,15 @@ type Member = {
     email: string | null;
     image: string | null;
   };
+};
+
+type Invitation = {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  expiresAt: Date | string;
+  createdAt: Date | string;
 };
 
 async function fetchOrgDetails() {
@@ -138,6 +169,11 @@ function GeneralTab({ activeOrg }: { activeOrg: OrgInfo }) {
 }
 
 function MembersTab() {
+  const queryClient = useQueryClient();
+  const [showInvite, setShowInvite] = useState(false);
+  const [memberToRemove, setMemberToRemove] = useState<Member | null>(null);
+  const [removeLoading, setRemoveLoading] = useState(false);
+
   const {
     data: orgData,
     isPending,
@@ -145,6 +181,14 @@ function MembersTab() {
   } = useQuery({
     queryKey: ['org-details'],
     queryFn: fetchOrgDetails,
+  });
+
+  const { data: invitationsData } = useQuery({
+    queryKey: ['org-invitations'],
+    queryFn: async () => {
+      const result = await organization.listInvitations();
+      return (result.data ?? []) as Invitation[];
+    },
   });
 
   if (isPending) {
@@ -164,45 +208,217 @@ function MembersTab() {
   }
 
   const members = (orgData.members ?? []) as Member[];
+  const pendingInvitations = (invitationsData ?? []).filter(
+    (inv) => inv.status === 'pending'
+  );
+
+  async function handleUpdateRole(memberId: string, newRole: string) {
+    try {
+      const result = await organization.updateMemberRole({
+        memberId,
+        role: newRole,
+      });
+      if (result.error) {
+        toast.error(result.error.message || 'Failed to update role');
+        return;
+      }
+      toast.success('Role updated');
+      queryClient.invalidateQueries({ queryKey: ['org-details'] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'An error occurred');
+    }
+  }
+
+  async function handleRemoveMember() {
+    if (!memberToRemove) return;
+    setRemoveLoading(true);
+    try {
+      const result = await organization.removeMember({
+        memberIdOrEmail: memberToRemove.id,
+      });
+      if (result.error) {
+        toast.error(result.error.message || 'Failed to remove member');
+        return;
+      }
+      toast.success('Member removed');
+      setMemberToRemove(null);
+      queryClient.invalidateQueries({ queryKey: ['org-details'] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setRemoveLoading(false);
+    }
+  }
+
+  async function handleCancelInvitation(invitationId: string) {
+    try {
+      await organization.cancelInvitation({ invitationId });
+      toast.success('Invitation cancelled');
+      queryClient.invalidateQueries({ queryKey: ['org-invitations'] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'An error occurred');
+    }
+  }
+
+  if (showInvite) {
+    return (
+      <div className="mt-4">
+        <InviteMemberDialog
+          onInvited={() => {
+            setShowInvite(false);
+            queryClient.invalidateQueries({ queryKey: ['org-invitations'] });
+          }}
+          onCancel={() => setShowInvite(false)}
+        />
+      </div>
+    );
+  }
 
   return (
-    <Card className="mt-4">
-      <CardHeader>
-        <CardTitle>Members</CardTitle>
-        <CardDescription>
-          {members.length} member{members.length !== 1 ? 's' : ''}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {members.map((member) => (
-            <div
-              key={member.id}
-              className="flex items-center justify-between py-2 border-b border-border/50 last:border-0"
-            >
-              <div>
-                <p className="text-sm font-medium">
-                  {member.user.name || member.user.email || 'Unknown'}
-                </p>
-                {member.user.email && (
-                  <p className="text-xs text-muted-foreground">
-                    {member.user.email}
-                  </p>
-                )}
-              </div>
-              <span className="text-xs text-muted-foreground capitalize">
-                {member.role}
-              </span>
+    <>
+      <Card className="mt-4">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Members</CardTitle>
+              <CardDescription>
+                {members.length} member{members.length !== 1 ? 's' : ''}
+              </CardDescription>
             </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowInvite(true)}
+            >
+              <PlusIcon className="w-4 h-4 mr-1" />
+              Invite Member
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {members.map((member) => (
+              <div
+                key={member.id}
+                className="flex items-center justify-between py-2 border-b border-border/50 last:border-0"
+              >
+                <div>
+                  <p className="text-sm font-medium">
+                    {member.user.name || member.user.email || 'Unknown'}
+                  </p>
+                  {member.user.email && (
+                    <p className="text-xs text-muted-foreground">
+                      {member.user.email}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="capitalize">
+                    {member.role}
+                  </Badge>
+                  {member.role !== 'owner' && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <Button variant="ghost" size="icon-sm">
+                            <DotsThreeVerticalIcon className="w-4 h-4" />
+                          </Button>
+                        }
+                      />
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Change Role</DropdownMenuLabel>
+                        <DropdownMenuItem
+                          disabled={member.role === 'member'}
+                          onClick={() => handleUpdateRole(member.id, 'member')}
+                        >
+                          Set as Member
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={member.role === 'admin'}
+                          onClick={() => handleUpdateRole(member.id, 'admin')}
+                        >
+                          Set as Admin
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => setMemberToRemove(member)}
+                        >
+                          Remove Member
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {pendingInvitations.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-border/50">
+              <p className="text-xs font-medium text-muted-foreground mb-2">
+                Pending Invitations ({pendingInvitations.length})
+              </p>
+              <div className="space-y-2">
+                {pendingInvitations.map((inv) => (
+                  <div
+                    key={inv.id}
+                    className="flex items-center justify-between py-1.5"
+                  >
+                    <div>
+                      <p className="text-sm">{inv.email}</p>
+                      <p className="text-xs text-muted-foreground capitalize">
+                        {inv.role}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleCancelInvitation(inv.id)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <AlertDialog
+        open={memberToRemove !== null}
+        onOpenChange={(open) => {
+          if (!open) setMemberToRemove(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove member?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {memberToRemove?.user.name || memberToRemove?.user.email} will be
+              removed from this organization.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={removeLoading}
+              onClick={handleRemoveMember}
+            >
+              {removeLoading ? 'Removing...' : 'Remove'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
 function TeamsTab() {
   const [showCreate, setShowCreate] = useState(false);
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const {
@@ -228,11 +444,11 @@ function TeamsTab() {
     );
   }
 
-  const teams = (orgData.teams ?? []) as Team[];
+  const teams = (orgData.teams ?? []) as unknown as Team[];
+  const members = (orgData.members ?? []) as Member[];
 
-  async function handleSelectTeam(teamId: string) {
-    await organization.setActiveTeam({ teamId });
-    window.location.reload();
+  function handleSelectTeam(teamId: string) {
+    setSelectedTeamId((prev) => (prev === teamId ? null : teamId));
   }
 
   if (showCreate) {
@@ -250,6 +466,10 @@ function TeamsTab() {
     );
   }
 
+  const selectedTeam = selectedTeamId
+    ? teams.find((t) => t.id === selectedTeamId) ?? null
+    : null;
+
   return (
     <Card className="mt-4">
       <CardHeader>
@@ -261,9 +481,22 @@ function TeamsTab() {
       <CardContent className="space-y-4">
         <TeamTree
           teams={teams}
-          activeTeamId={null}
+          activeTeamId={selectedTeamId}
           onSelectTeam={handleSelectTeam}
         />
+
+        {selectedTeam && (
+          <TeamDetailPanel
+            team={selectedTeam}
+            orgMembers={members}
+            onDeleted={() => {
+              setSelectedTeamId(null);
+              queryClient.invalidateQueries({ queryKey: ['org-details'] });
+            }}
+            onClose={() => setSelectedTeamId(null)}
+          />
+        )}
+
         <Button
           variant="outline"
           size="sm"
