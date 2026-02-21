@@ -7,6 +7,7 @@ import {
   ingestTextInternal,
   ingestGoogleDocInternal,
   ingestLinearResourceInternal,
+  ingestGitHubInternal,
   listTopicsInternal,
   listQuestionsInternal,
   answerQuestionInternal,
@@ -30,6 +31,9 @@ export const internalRoutes = prefix('/internal', [
   }),
   route('/ingest/linear', {
     post: ingestLinearResourceInternal,
+  }),
+  route('/ingest/github', {
+    post: ingestGitHubInternal,
   }),
   route('/topics', {
     post: listTopicsInternal,

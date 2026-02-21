@@ -7,6 +7,7 @@ import { brainRoutes } from './app/api/brains/routes';
 import { factRoutes, searchRoutes } from './app/api/facts/routes';
 import { googleIntegrationRoutes } from './app/api/integrations/google/routes';
 import { linearIntegrationRoutes } from './app/api/integrations/linear/routes';
+import { githubIntegrationRoutes } from './app/api/integrations/github/routes';
 import { ingestionRoutes } from './app/api/ingestion/routes';
 import { internalRoutes } from './app/api/internal/routes';
 import { userRoutes, avatarRoutes } from './app/api/users/routes';
@@ -144,7 +145,7 @@ const app = defineApp<RequestInfo<Record<string, string>, AppContext>>([
     return response;
   }),
   realtimeRoute(() => env.REALTIME_DURABLE_OBJECT),
-  prefix('/api', [internalRoutes, userRoutes, avatarRoutes, brainRoutes, factRoutes, searchRoutes, ingestionRoutes, googleIntegrationRoutes, linearIntegrationRoutes]),
+  prefix('/api', [internalRoutes, userRoutes, avatarRoutes, brainRoutes, factRoutes, searchRoutes, ingestionRoutes, googleIntegrationRoutes, linearIntegrationRoutes, githubIntegrationRoutes]),
   render(Document, [
     route('/', Home),
     route('/login', Login),

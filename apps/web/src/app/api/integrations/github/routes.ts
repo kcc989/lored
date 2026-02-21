@@ -1,0 +1,26 @@
+import { prefix, route } from 'rwsdk/router';
+
+import { requireAuth } from '@/lib/middleware/auth';
+import { requireOrg } from '@/lib/middleware/org';
+
+import {
+  handleGitHubIntegrationConnect,
+  handleGitHubIntegrationCallback,
+  handleGitHubIntegrationDisconnect,
+  handleGitHubIntegrationStatus,
+} from './handlers';
+
+export const githubIntegrationRoutes = prefix('/integrations/github', [
+  route('/connect', {
+    get: [requireAuth, requireOrg, handleGitHubIntegrationConnect],
+  }),
+  route('/callback', {
+    get: [requireAuth, handleGitHubIntegrationCallback],
+  }),
+  route('/disconnect', {
+    post: [requireAuth, handleGitHubIntegrationDisconnect],
+  }),
+  route('/status', {
+    get: [requireAuth, handleGitHubIntegrationStatus],
+  }),
+]);

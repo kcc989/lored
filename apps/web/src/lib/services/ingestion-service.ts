@@ -45,6 +45,18 @@ import {
   fetchLinearProject,
   LinearIssueError,
 } from '@/lib/services/linear-issues-service';
+import {
+  getValidGitHubToken,
+  GitHubAuthError,
+} from '@/lib/services/github-auth-service';
+import {
+  parseGitHubUrl,
+  isGitHubUrl,
+  extractGitHubUrl,
+  fetchGitHubContent,
+  GitHubContentError,
+  type GitHubContentType,
+} from '@/lib/services/github-content-service';
 
 // --- Types ---
 
@@ -89,6 +101,19 @@ export interface LinearErrorResult {
   message: string;
   connectUrl?: string;
   resourceTitle?: string;
+}
+
+export interface IngestGitHubInput {
+  brainId: string;
+  contentUrl: string;
+  userId: string;
+}
+
+export interface GitHubErrorResult {
+  error: string;
+  message: string;
+  connectUrl?: string;
+  contentTitle?: string;
 }
 
 export interface IngestionResult {
@@ -201,7 +226,7 @@ async function processExtraction(
   env: Env,
   brainId: string,
   ingestionId: string,
-  sourceType: 'text_input' | 'document_upload' | 'image_upload' | 'google_doc' | 'linear_issue',
+  sourceType: 'text_input' | 'document_upload' | 'image_upload' | 'google_doc' | 'linear_issue' | 'github_issue' | 'github_pr' | 'github_project',
   extractionInput: ExtractionInput,
   userId: string
 ): Promise<Omit<IngestionResult, 'ingestion'>> {
@@ -967,6 +992,11 @@ export function detectGoogleDocInText(text: string): string | null {
 
 // --- Linear Ingestion ---
 
+const LINEAR_CONTENT_TYPE_TO_SOURCE: Record<'issue' | 'project', 'linear_issue'> = {
+  issue: 'linear_issue',
+  project: 'linear_issue',
+};
+
 /**
  * Ingest a Linear issue or project by URL. Fetches the content using the user's
  * Linear connection, then runs it through the standard extraction pipeline.
@@ -1088,6 +1118,7 @@ export async function ingestLinearResource(
     );
 
     const resourceLabel = parsed.type === 'issue' ? 'Issue' : 'Project';
+
     const result = await processExtraction(
       factsDb,
       env,
@@ -1183,6 +1214,263 @@ export function detectLinearUrlInText(text: string): string | null {
   const trimmed = text.trim();
   if (isLinearUrl(trimmed)) {
     return extractLinearUrl(trimmed);
+  }
+  return null;
+}
+
+// --- GitHub Ingestion ---
+
+const GITHUB_CONTENT_TYPE_TO_SOURCE: Record<GitHubContentType, 'github_issue' | 'github_pr' | 'github_project'> = {
+  issue: 'github_issue',
+  pull_request: 'github_pr',
+  project: 'github_project',
+};
+
+function getGitHubExternalDocId(
+  type: GitHubContentType,
+  owner: string,
+  repo: string | undefined,
+  number: number
+): string {
+  if (type === 'project') {
+    return `${owner}/projects/${number}`;
+  }
+  const typeSlug = type === 'pull_request' ? 'pull' : 'issues';
+  return `${owner}/${repo}/${typeSlug}/${number}`;
+}
+
+/**
+ * Ingest a GitHub issue, pull request, or project by URL.
+ * Fetches content using the user's GitHub integration connection,
+ * then runs it through the standard extraction pipeline.
+ */
+export async function ingestGitHubContent(
+  factsDb: FactsAppDatabase,
+  env: Env,
+  input: IngestGitHubInput
+): Promise<IngestionResult | GitHubErrorResult> {
+  // 1. Parse the URL
+  const parsed = parseGitHubUrl(input.contentUrl);
+  if (!parsed) {
+    return {
+      error: 'invalid_url',
+      message: 'Not a recognized GitHub URL. Expected a GitHub issue, pull request, or project URL.',
+    };
+  }
+
+  // 2. Get a valid GitHub token
+  let accessToken: string;
+  try {
+    const result = await getValidGitHubToken(env, input.userId);
+    accessToken = result.accessToken;
+  } catch (err) {
+    if (err instanceof GitHubAuthError) {
+      if (err.code === 'github_not_connected') {
+        return {
+          error: 'github_not_connected',
+          message: 'Connect your GitHub account to ingest GitHub content.',
+          connectUrl: '/api/integrations/github/connect',
+        };
+      }
+      return {
+        error: err.code,
+        message: err.message,
+        connectUrl: '/api/integrations/github/connect',
+      };
+    }
+    throw err;
+  }
+
+  // 3. Fetch content
+  let metadata;
+  let content;
+  try {
+    const result = await fetchGitHubContent(accessToken, parsed);
+    metadata = result.metadata;
+    content = result.content;
+  } catch (err) {
+    if (err instanceof GitHubContentError) {
+      return {
+        error: err.code,
+        message: err.message,
+        contentTitle: undefined,
+      };
+    }
+    throw err;
+  }
+
+  // 4. Check if already ingested with same content
+  const externalDocId = getGitHubExternalDocId(parsed.type, parsed.owner, parsed.repo, parsed.number);
+  const existing = await factsDb
+    .selectFrom('ingested_document')
+    .where('brainId', '=', input.brainId)
+    .where('provider', '=', 'github')
+    .where('externalDocumentId', '=', externalDocId)
+    .selectAll()
+    .executeTakeFirst();
+
+  if (existing && existing.contentHash === content.contentHash) {
+    return {
+      error: 'no_changes',
+      message: `"${metadata.title}" has not changed since last ingestion.`,
+      contentTitle: metadata.title,
+    };
+  }
+
+  // 5. Create ingestion record and run extraction
+  const sourceType = GITHUB_CONTENT_TYPE_TO_SOURCE[parsed.type];
+  const now = new Date().toISOString();
+  const ingestionId = nanoid();
+
+  const typeLabel = parsed.type === 'pull_request' ? 'PR' : parsed.type === 'issue' ? 'Issue' : 'Project';
+
+  const ingestionMetadata = JSON.stringify({
+    githubType: parsed.type,
+    owner: parsed.owner,
+    repo: parsed.repo,
+    number: parsed.number,
+    url: metadata.url,
+    state: metadata.state,
+    author: metadata.author,
+    labels: metadata.labels,
+  });
+
+  await factsDb
+    .insertInto('ingestion')
+    .values({
+      id: ingestionId,
+      brainId: input.brainId,
+      sourceType,
+      title: `${typeLabel} #${parsed.number}: ${metadata.title}`,
+      rawText: content.text,
+      r2Key: null,
+      mimeType: null,
+      fileSizeBytes: new TextEncoder().encode(content.text).length,
+      status: 'processing',
+      factCount: 0,
+      errorMessage: null,
+      metadata: ingestionMetadata,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: input.userId,
+    })
+    .execute();
+
+  try {
+    const { existingFacts, existingTopics } = await getExistingContext(
+      env,
+      factsDb,
+      input.brainId,
+      content.text.slice(0, 500)
+    );
+
+    const sourceDescription = parsed.repo
+      ? `GitHub ${typeLabel}: ${parsed.owner}/${parsed.repo}#${parsed.number}`
+      : `GitHub ${typeLabel}: ${parsed.owner}/projects/${parsed.number}`;
+
+    const result = await processExtraction(
+      factsDb,
+      env,
+      input.brainId,
+      ingestionId,
+      sourceType,
+      {
+        rawText: content.text,
+        sourceDescription,
+        sourceType,
+        existingFacts,
+        existingTopics,
+      },
+      input.userId
+    );
+
+    const factCount =
+      result.factsCreated.length + result.factsUpdated.length;
+
+    await factsDb
+      .updateTable('ingestion')
+      .set({
+        status: 'completed',
+        factCount,
+        updatedAt: new Date().toISOString(),
+      })
+      .where('id', '=', ingestionId)
+      .execute();
+
+    // 6. Upsert ingested_document record
+    if (existing) {
+      await factsDb
+        .updateTable('ingested_document')
+        .set({
+          title: metadata.title,
+          documentUrl: metadata.url,
+          lastIngestionId: ingestionId,
+          lastModifiedAt: metadata.updatedAt,
+          lastIngestedAt: now,
+          contentHash: content.contentHash,
+          ingestionCount: factsDb.raw('ingestionCount + 1'),
+          updatedAt: now,
+        })
+        .where('id', '=', existing.id)
+        .execute();
+    } else {
+      await factsDb
+        .insertInto('ingested_document')
+        .values({
+          id: nanoid(),
+          brainId: input.brainId,
+          provider: 'github',
+          externalDocumentId: externalDocId,
+          title: metadata.title,
+          documentUrl: metadata.url,
+          lastIngestionId: ingestionId,
+          lastModifiedAt: metadata.updatedAt,
+          lastIngestedAt: now,
+          contentHash: content.contentHash,
+          ingestionCount: 1,
+          status: 'active',
+          metadata: JSON.stringify({
+            type: parsed.type,
+            owner: parsed.owner,
+            repo: parsed.repo,
+            state: metadata.state,
+            author: metadata.author,
+            labels: metadata.labels,
+          }),
+          createdAt: now,
+          updatedAt: now,
+          createdBy: input.userId,
+        })
+        .execute();
+    }
+
+    return {
+      ingestion: { id: ingestionId, status: 'completed', factCount },
+      ...result,
+    };
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error';
+    await factsDb
+      .updateTable('ingestion')
+      .set({
+        status: 'failed',
+        errorMessage,
+        updatedAt: new Date().toISOString(),
+      })
+      .where('id', '=', ingestionId)
+      .execute();
+    throw error;
+  }
+}
+
+/**
+ * Check if text input is a GitHub URL and should be routed to GitHub ingestion.
+ */
+export function detectGitHubUrlInText(text: string): string | null {
+  const trimmed = text.trim();
+  if (isGitHubUrl(trimmed)) {
+    return extractGitHubUrl(trimmed);
   }
   return null;
 }
