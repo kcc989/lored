@@ -1,6 +1,6 @@
 'use client';
 
-import { GithubLogoIcon } from '@phosphor-icons/react';
+import { GithubLogoIcon, GoogleLogoIcon } from '@phosphor-icons/react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -12,17 +12,32 @@ import {
 } from '@/components/ui/card';
 import { authClient } from '@/lib/auth-client';
 
+const LinearIcon = ({ className }: { className?: string }) => (
+  <svg
+    className={className}
+    viewBox="0 0 100 100"
+    fill="currentColor"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path d="M1.22541 61.5228c-.97636-1.6151-.44024-3.6948 1.17461-4.6726L48.7621 29.0348c1.6163-.9778 3.6957-.4407 4.6735 1.1746.9764 1.6163.4407 3.6957-1.1746 4.6735L5.89791 62.6975c-1.61489.9764-3.69569.4407-4.6725-1.1747Z" />
+    <path d="M2.18135 72.9655c-.97636-1.6163-.44024-3.6957 1.17461-4.6735L62.9073 37.386c1.6149-.9778 3.6957-.4407 4.6735 1.1746.9764 1.6163.4407 3.6957-1.1746 4.6735L6.85525 74.1401c-1.61489.9764-3.69569.4407-4.6739-1.1746Z" />
+    <path d="M3.9208 84.5765c-.97636-1.6163-.44024-3.6957 1.17461-4.6735L77.8368 45.7374c1.6149-.9778 3.6957-.4407 4.6735 1.1746.9764 1.6163.4407 3.6957-1.1746 4.6735L8.59471 85.7511c-1.61489.9778-3.69569.4407-4.67391-1.1746Z" />
+    <path d="M5.66553 96.1875c-.97637-1.6163-.44024-3.6957 1.17461-4.6735L92.7721 54.0884c1.615-.9778 3.6957-.4407 4.6735 1.1746.9764 1.6163.4407 3.6957-1.1746 4.6735L10.3394 97.3621c-1.61489.9778-3.69569.4407-4.67387-1.1746Z" />
+    <path d="M19.3834 16.8014c-.9764-1.61635-.4403-3.69569 1.1746-4.67349L34.9238 3.28788c1.6149-.97636 3.6957-.44024 4.6735 1.17461.9764 1.61489.4407 3.69569-1.1746 4.67349L24.0573 17.9761c-1.6149.9764-3.6957.4407-4.6739-1.1747Z" />
+    <path d="M18.25 27.9753c-.9764-1.6163-.4403-3.6957 1.1746-4.6735L48.9009 11.5777c1.6149-.9778 3.6957-.4407 4.6735 1.1746.9764 1.6163.4407 3.6957-1.1746 4.6735L22.925 29.1499c-1.6149.9778-3.6957.4407-4.6739-1.1746Z" />
+    <path d="M.44135 50.0694c-.97636-1.6163-.44024-3.6957 1.17461-4.6735L34.5765 20.7303c1.6149-.9778 3.6957-.4407 4.6735 1.1746.9764 1.6163.4407 3.6957-1.1746 4.6735L5.11525 51.244c-1.61489.9778-3.69569.4407-4.6739-1.1746Z" />
+  </svg>
+);
+
+const handleSocialLogin = async (provider: 'github' | 'google' | 'linear') => {
+  try {
+    await authClient.signIn.social({ provider });
+  } catch (err) {
+    console.error(`${provider} login error:`, err);
+  }
+};
+
 export const Login = () => {
-  const handleGithubLogin = async () => {
-    try {
-      // Use Better Auth's Github OAuth flow
-      await authClient.signIn.social({
-        provider: 'github',
-      });
-    } catch (err) {
-      console.error('Github login error:', err);
-    }
-  };
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
@@ -32,10 +47,18 @@ export const Login = () => {
             Sign in to continue
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <Button className="w-full" size="lg" onClick={handleGithubLogin}>
+        <CardContent className="space-y-3">
+          <Button className="w-full" size="lg" onClick={() => handleSocialLogin('github')}>
             <GithubLogoIcon className="mr-2 h-5 w-5" />
             Login with GitHub
+          </Button>
+          <Button className="w-full" size="lg" variant="outline" onClick={() => handleSocialLogin('google')}>
+            <GoogleLogoIcon className="mr-2 h-5 w-5" />
+            Login with Google
+          </Button>
+          <Button className="w-full" size="lg" variant="outline" onClick={() => handleSocialLogin('linear')}>
+            <LinearIcon className="mr-2 h-5 w-5" />
+            Login with Linear
           </Button>
         </CardContent>
       </Card>

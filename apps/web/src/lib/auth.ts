@@ -21,6 +21,14 @@ export const createAuth = (env: Env) => {
         clientSecret: env.GITHUB_CLIENT_SECRET,
         scope: ['user:email'],
       },
+      google: {
+        clientId: env.GOOGLE_CLIENT_ID,
+        clientSecret: env.GOOGLE_CLIENT_SECRET,
+      },
+      linear: {
+        clientId: env.LINEAR_CLIENT_ID,
+        clientSecret: env.LINEAR_CLIENT_SECRET,
+      },
     },
     session: {
       cookieCache: {
