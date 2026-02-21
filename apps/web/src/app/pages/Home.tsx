@@ -31,6 +31,7 @@ export const Home = () => {
   if (!ctx.activeOrganization) {
     return (
       <script
+        nonce={requestInfo.rw.nonce}
         dangerouslySetInnerHTML={{
           __html: 'window.location.href = "/org/select";',
         }}

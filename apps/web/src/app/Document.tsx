@@ -22,7 +22,7 @@ export function Document({ children }: DocumentProps) {
       </head>
       <body>
         <div id="root">{children}</div>
-        <script>import("/src/client.tsx")</script>
+        <script nonce={requestInfo.rw.nonce}>import("/src/client.tsx")</script>
       </body>
     </html>
   );

@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -113,19 +114,21 @@ export function OrgSwitcher({
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent side="right" align="start" className="w-56">
-        <DropdownMenuLabel>Organizations</DropdownMenuLabel>
-        {orgs.map((org) => (
-          <DropdownMenuItem
-            key={org.id}
-            onClick={() => handleSwitchOrg(org.id)}
-          >
-            <BuildingsIcon className="w-4 h-4 mr-2" />
-            <span className="flex-1 truncate">{org.name}</span>
-            {org.id === activeOrg.id && (
-              <CheckIcon className="w-4 h-4 ml-2" />
-            )}
-          </DropdownMenuItem>
-        ))}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Organizations</DropdownMenuLabel>
+          {orgs.map((org) => (
+            <DropdownMenuItem
+              key={org.id}
+              onClick={() => handleSwitchOrg(org.id)}
+            >
+              <BuildingsIcon className="w-4 h-4 mr-2" />
+              <span className="flex-1 truncate">{org.name}</span>
+              {org.id === activeOrg.id && (
+                <CheckIcon className="w-4 h-4 ml-2" />
+              )}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => {
