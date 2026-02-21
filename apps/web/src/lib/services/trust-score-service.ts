@@ -68,13 +68,19 @@ export function getSourceAuthority(
     | 'url'
     | 'google_doc'
     | 'linear_issue'
+    | 'github_issue'
+    | 'github_pr'
+    | 'github_project'
 ): number {
   const authorityMap: Record<string, number> = {
     direct_entry: 0.9,
     text_input: 0.8,
+    github_pr: 0.75,
     google_doc: 0.75,
     linear_issue: 0.72,
+    github_issue: 0.7,
     document_upload: 0.7,
+    github_project: 0.65,
     url: 0.6,
     image_upload: 0.5,
   };

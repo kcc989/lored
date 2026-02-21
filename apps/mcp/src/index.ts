@@ -196,6 +196,116 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 		};
 	}
 
+	private async ingestGitHubViaInternal(
+		organizationId: string,
+		brainId: string,
+		contentUrl: string,
+	) {
+		const response = await this.env.WEB_APP.fetch(
+			new Request('http://internal/api/internal/ingest/github', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					userId: this.props!.loredUserId,
+					organizationId,
+					brainId,
+					contentUrl,
+				}),
+			}),
+		);
+
+		if (!response.ok) {
+			const errorBody = (await response.json().catch(() => null)) as {
+				error?: string;
+				message?: string;
+				connectUrl?: string;
+			} | null;
+
+			if (errorBody?.error === 'github_not_connected') {
+				return {
+					content: [
+						{
+							text: 'You need to connect your GitHub integration first. Visit your Lored settings page to connect your GitHub account with repo access, then try again.',
+							type: 'text' as const,
+						},
+					],
+					isError: true,
+				};
+			}
+
+			if (errorBody?.error === 'github_token_expired') {
+				return {
+					content: [
+						{
+							text: 'Your GitHub connection has expired. Please reconnect your GitHub account in settings, then try again.',
+							type: 'text' as const,
+						},
+					],
+					isError: true,
+				};
+			}
+
+			if (errorBody?.error === 'github_access_denied') {
+				return {
+					content: [
+						{
+							text: 'Your GitHub account cannot access this resource. Make sure you have access to the repository or project.',
+							type: 'text' as const,
+						},
+					],
+					isError: true,
+				};
+			}
+
+			if (errorBody?.error === 'github_not_found') {
+				return {
+					content: [
+						{
+							text: 'Resource not found on GitHub. Check that the URL is correct and the issue/PR/project exists.',
+							type: 'text' as const,
+						},
+					],
+					isError: true,
+				};
+			}
+
+			if (errorBody?.error === 'github_content_too_large') {
+				return {
+					content: [
+						{
+							text: errorBody.message ?? 'Content exceeds the size limit for ingestion.',
+							type: 'text' as const,
+						},
+					],
+					isError: true,
+				};
+			}
+
+			if (errorBody?.error === 'github_rate_limited') {
+				return {
+					content: [
+						{
+							text: errorBody.message ?? 'GitHub API rate limit exceeded. Please try again later.',
+							type: 'text' as const,
+						},
+					],
+					isError: true,
+				};
+			}
+
+			const errorText = errorBody?.message ?? `HTTP ${response.status}`;
+			return {
+				content: [{ text: `GitHub ingestion failed: ${errorText}`, type: 'text' as const }],
+				isError: true,
+			};
+		}
+
+		const result = await response.json();
+		return {
+			content: [{ text: JSON.stringify(result), type: 'text' as const }],
+		};
+	}
+
 	async init() {
 		this.server.tool(
 			'add',
@@ -330,7 +440,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 
 		this.server.tool(
 			'ingest',
-			'Submit text, a Google Doc URL, or a Linear issue/project URL to a brain for fact extraction. The system will analyze the content, extract structured facts, identify topics, detect duplicates, and generate questions for knowledge gaps. Google Doc and Linear URLs are automatically detected and fetched.',
+			'Submit text, a Google Doc URL, a Linear issue/project URL, or a GitHub URL (issue, PR, or project) to a brain for fact extraction. The system will analyze the content, extract structured facts, identify topics, detect duplicates, and generate questions for knowledge gaps. Google Doc, Linear, and GitHub URLs are automatically detected and fetched.',
 			{
 				organizationId: z.string().describe('The organization ID the brain belongs to'),
 				brainId: z.string().describe('The brain ID to ingest text into'),
@@ -338,7 +448,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 					.string()
 					.min(1)
 					.describe(
-						'The raw text content to extract facts from, or a Google Docs / Linear URL to fetch and ingest',
+						'The raw text content to extract facts from, a Google Docs URL, a Linear URL, or a GitHub URL (issue, PR, or project)',
 					),
 				title: z.string().optional().describe('Optional title describing the source of this text'),
 			},
@@ -364,6 +474,12 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 				const linearPattern = /https?:\/\/linear\.app\/[^/]+\/(issue|project)\/[^\s]+/;
 				if (linearPattern.test(text)) {
 					return this.ingestLinearViaInternal(organizationId, brainId, text.trim());
+				}
+
+				// Auto-detect GitHub URLs
+				const githubPattern = /https?:\/\/github\.com\/(?:(?:[^/]+\/[^/]+\/(?:issues|pull)\/\d+)|(?:(?:orgs|users)\/[^/]+\/projects\/\d+))/;
+				if (githubPattern.test(text)) {
+					return this.ingestGitHubViaInternal(organizationId, brainId, text);
 				}
 
 				const response = await this.env.WEB_APP.fetch(
@@ -446,6 +562,32 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 				}
 
 				return this.ingestLinearViaInternal(organizationId, brainId, resourceUrl);
+			},
+		);
+
+		this.server.tool(
+			'ingest-github',
+			'Ingest a GitHub issue, pull request, or project into a brain for fact extraction. Fetches the content using the authenticated user\'s GitHub connection, then extracts facts, topics, and questions. Requires the user to have connected their GitHub account with repo access.',
+			{
+				organizationId: z.string().describe('The organization ID the brain belongs to'),
+				brainId: z.string().describe('The brain ID to ingest the resource into'),
+				contentUrl: z
+					.string()
+					.min(1)
+					.describe('The GitHub URL (issue, PR, or project). Examples: https://github.com/owner/repo/issues/123, https://github.com/owner/repo/pull/456, https://github.com/orgs/owner/projects/789'),
+			},
+			async ({ organizationId, brainId, contentUrl }) => {
+				const org = this.props?.organizations?.find((o) => o.id === organizationId);
+				if (!org) {
+					return {
+						content: [
+							{ text: 'Organization not found or you do not have access', type: 'text' as const },
+						],
+						isError: true,
+					};
+				}
+
+				return this.ingestGitHubViaInternal(organizationId, brainId, contentUrl);
 			},
 		);
 

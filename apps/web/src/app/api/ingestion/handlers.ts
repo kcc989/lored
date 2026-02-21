@@ -7,9 +7,11 @@ import {
   ingestText,
   ingestFile,
   ingestGoogleDoc,
+  ingestGitHubContent,
   detectGoogleDocInText,
   ingestLinearResource,
   detectLinearUrlInText,
+  detectGitHubUrlInText,
   getIngestion,
   listIngestions,
   listIngestedDocuments,
@@ -79,6 +81,28 @@ export async function handleIngestText({
       const status = result.error === 'linear_not_connected' ? 401
         : result.error === 'linear_access_denied' ? 403
         : result.error === 'linear_not_found' ? 404
+        : result.error === 'no_changes' ? 200
+        : 400;
+      return Response.json(result, { status });
+    }
+
+    return Response.json(result, { status: 201 });
+  }
+
+  // Auto-detect GitHub URLs pasted as text
+  const githubUrl = detectGitHubUrlInText(input.text);
+  if (githubUrl) {
+    const result = await ingestGitHubContent(ctx.factsDb!, env, {
+      brainId: params.brainId,
+      contentUrl: githubUrl,
+      userId: ctx.user!.id,
+    });
+
+    if ('error' in result) {
+      const status = result.error === 'github_not_connected' ? 401
+        : result.error === 'github_access_denied' ? 403
+        : result.error === 'github_not_found' ? 404
+        : result.error === 'github_content_too_large' ? 413
         : result.error === 'no_changes' ? 200
         : 400;
       return Response.json(result, { status });
@@ -314,6 +338,39 @@ export async function handleIngestLinearResource({
     const status = result.error === 'linear_not_connected' ? 401
       : result.error === 'linear_access_denied' ? 403
       : result.error === 'linear_not_found' ? 404
+      : result.error === 'no_changes' ? 200
+      : 400;
+    return Response.json(result, { status });
+  }
+
+  return Response.json(result, { status: 201 });
+}
+
+// --- GitHub Handlers ---
+
+const ingestGitHubSchema = z.object({
+  contentUrl: z.string().url(),
+});
+
+export async function handleIngestGitHub({
+  request,
+  ctx,
+  params,
+}: RequestInfo): Promise<Response> {
+  const body = await request.json();
+  const input = ingestGitHubSchema.parse(body);
+
+  const result = await ingestGitHubContent(ctx.factsDb!, env, {
+    brainId: params.brainId,
+    contentUrl: input.contentUrl,
+    userId: ctx.user!.id,
+  });
+
+  if ('error' in result) {
+    const status = result.error === 'github_not_connected' ? 401
+      : result.error === 'github_access_denied' ? 403
+      : result.error === 'github_not_found' ? 404
+      : result.error === 'github_content_too_large' ? 413
       : result.error === 'no_changes' ? 200
       : 400;
     return Response.json(result, { status });
