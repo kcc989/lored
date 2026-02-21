@@ -13,7 +13,7 @@ import { handleListGoogleDocuments } from './browse-handlers';
 
 export const googleIntegrationRoutes = prefix('/integrations/google', [
   route('/connect', {
-    get: [requireAuth, requireOrg, handleGoogleConnect],
+    get: [requireAuth, handleGoogleConnect],
   }),
   route('/callback', {
     get: [requireAuth, handleGoogleCallback],
