@@ -16,7 +16,7 @@ export const RealtimeDocument: React.FC<{ children: React.ReactNode }> = ({
       </head>
       <body>
         <div id="root">{children}</div>
-        <script>import("/src/realtime-client.tsx")</script>
+        <script nonce={requestInfo.rw.nonce}>import("/src/realtime-client.tsx")</script>
         <link rel="stylesheet" href="/src/global.css" />
       </body>
     </html>

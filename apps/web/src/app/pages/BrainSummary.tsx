@@ -13,6 +13,7 @@ export const BrainSummary = () => {
   if (!ctx.user || !ctx.activeOrganization) {
     return (
       <script
+        nonce={requestInfo.rw.nonce}
         dangerouslySetInnerHTML={{
           __html: 'window.location.href = "/";',
         }}
