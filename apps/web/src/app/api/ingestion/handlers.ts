@@ -8,6 +8,8 @@ import {
   ingestFile,
   ingestGoogleDoc,
   detectGoogleDocInText,
+  ingestLinearResource,
+  detectLinearUrlInText,
   getIngestion,
   listIngestions,
   listIngestedDocuments,
@@ -56,6 +58,27 @@ export async function handleIngestText({
         : result.error === 'google_access_denied' ? 403
         : result.error === 'google_doc_not_found' ? 404
         : result.error === 'google_doc_too_large' ? 413
+        : result.error === 'no_changes' ? 200
+        : 400;
+      return Response.json(result, { status });
+    }
+
+    return Response.json(result, { status: 201 });
+  }
+
+  // Auto-detect Linear URLs pasted as text
+  const linearUrl = detectLinearUrlInText(input.text);
+  if (linearUrl) {
+    const result = await ingestLinearResource(ctx.factsDb!, env, {
+      brainId: params.brainId,
+      resourceUrl: linearUrl,
+      userId: ctx.user!.id,
+    });
+
+    if ('error' in result) {
+      const status = result.error === 'linear_not_connected' ? 401
+        : result.error === 'linear_access_denied' ? 403
+        : result.error === 'linear_not_found' ? 404
         : result.error === 'no_changes' ? 200
         : 400;
       return Response.json(result, { status });
@@ -259,6 +282,38 @@ export async function handleIngestGoogleDoc({
       : result.error === 'google_access_denied' ? 403
       : result.error === 'google_doc_not_found' ? 404
       : result.error === 'google_doc_too_large' ? 413
+      : result.error === 'no_changes' ? 200
+      : 400;
+    return Response.json(result, { status });
+  }
+
+  return Response.json(result, { status: 201 });
+}
+
+// --- Linear Handlers ---
+
+const ingestLinearSchema = z.object({
+  resourceUrl: z.string().url(),
+});
+
+export async function handleIngestLinearResource({
+  request,
+  ctx,
+  params,
+}: RequestInfo): Promise<Response> {
+  const body = await request.json();
+  const input = ingestLinearSchema.parse(body);
+
+  const result = await ingestLinearResource(ctx.factsDb!, env, {
+    brainId: params.brainId,
+    resourceUrl: input.resourceUrl,
+    userId: ctx.user!.id,
+  });
+
+  if ('error' in result) {
+    const status = result.error === 'linear_not_connected' ? 401
+      : result.error === 'linear_access_denied' ? 403
+      : result.error === 'linear_not_found' ? 404
       : result.error === 'no_changes' ? 200
       : 400;
     return Response.json(result, { status });

@@ -67,11 +67,13 @@ export function getSourceAuthority(
     | 'image_upload'
     | 'url'
     | 'google_doc'
+    | 'linear_issue'
 ): number {
   const authorityMap: Record<string, number> = {
     direct_entry: 0.9,
     text_input: 0.8,
     google_doc: 0.75,
+    linear_issue: 0.72,
     document_upload: 0.7,
     url: 0.6,
     image_upload: 0.5,

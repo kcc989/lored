@@ -3,7 +3,7 @@
 export interface ExtractionInput {
   rawText: string;
   sourceDescription: string;
-  sourceType: 'text_input' | 'document_upload' | 'image_upload' | 'google_doc';
+  sourceType: 'text_input' | 'document_upload' | 'image_upload' | 'google_doc' | 'linear_issue';
   existingFacts: Array<{
     id: string;
     content: string;
