@@ -45,7 +45,7 @@
     "react-resizable-panels": "^3.0.6",
     "react-server-dom-webpack": "19.3.0-canary-bef88f7c-20260116",
     "recharts": "2.15.4",
-    "rwsdk": "1.0.0-beta.48",
+    "rwsdk": "1.0.0-beta.54",
     "shadcn": "^3.7.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
@@ -55,15 +55,15 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.15.2",
+    "@cloudflare/vite-plugin": "^1.25.1",
     "@cloudflare/vitest-pool-workers": "^0.10.10",
-    "@cloudflare/workers-types": "4.20251125.0",
+    "@cloudflare/workers-types": "^4.20260219.0",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.1.17",
     "@types/node": "~24.5.2",
     "@types/react": "19.2.8",
     "@types/react-dom": "19.2.3",
     "vite": "7.2.4",
-    "wrangler": "^4.65.0"
+    "wrangler": "^4.66.0"
   }
 }
