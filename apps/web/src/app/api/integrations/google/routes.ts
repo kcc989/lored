@@ -9,6 +9,7 @@ import {
   handleGoogleDisconnect,
   handleGoogleStatus,
 } from './handlers';
+import { handleListGoogleDocuments } from './browse-handlers';
 
 export const googleIntegrationRoutes = prefix('/integrations/google', [
   route('/connect', {
@@ -22,5 +23,8 @@ export const googleIntegrationRoutes = prefix('/integrations/google', [
   }),
   route('/status', {
     get: [requireAuth, handleGoogleStatus],
+  }),
+  route('/documents', {
+    get: [requireAuth, requireOrg, handleListGoogleDocuments],
   }),
 ]);

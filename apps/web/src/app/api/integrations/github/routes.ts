@@ -9,6 +9,10 @@ import {
   handleGitHubIntegrationDisconnect,
   handleGitHubIntegrationStatus,
 } from './handlers';
+import {
+  handleListGitHubRepos,
+  handleListGitHubIssues,
+} from './browse-handlers';
 
 export const githubIntegrationRoutes = prefix('/integrations/github', [
   route('/connect', {
@@ -22,5 +26,11 @@ export const githubIntegrationRoutes = prefix('/integrations/github', [
   }),
   route('/status', {
     get: [requireAuth, handleGitHubIntegrationStatus],
+  }),
+  route('/repos', {
+    get: [requireAuth, requireOrg, handleListGitHubRepos],
+  }),
+  route('/repos/:owner/:repo/issues', {
+    get: [requireAuth, requireOrg, handleListGitHubIssues],
   }),
 ]);

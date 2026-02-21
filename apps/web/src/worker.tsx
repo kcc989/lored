@@ -22,6 +22,8 @@ import { Login } from '@/app/pages/Login';
 import { OrgSelect } from '@/app/pages/OrgSelect';
 import { OrgSettings } from '@/app/pages/OrgSettings';
 import { Settings } from '@/app/pages/Settings';
+import { BrainInput } from '@/app/pages/BrainInput';
+import { BrainSummary } from '@/app/pages/BrainSummary';
 import type { Session, User } from '@/lib/auth';
 import { createAuth } from '@/lib/auth';
 import { db } from '@/db';
@@ -153,6 +155,8 @@ const app = defineApp<RequestInfo<Record<string, string>, AppContext>>([
     layout(AppLayout, [
       route('/settings', Settings),
       route('/org/settings', OrgSettings),
+      route('/brains/:brainId/input', BrainInput),
+      route('/brains/:brainId/summary', BrainSummary),
     ]),
   ]),
 ]);
