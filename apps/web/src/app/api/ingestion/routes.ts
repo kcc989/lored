@@ -6,6 +6,7 @@ import {
   handleIngestGoogleDoc,
   handleIngestLinearResource,
   handleIngestGitHub,
+  handleBulkIngest,
   handleListIngestions,
   handleGetIngestion,
   handleListIngestedDocuments,
@@ -14,6 +15,8 @@ import {
   handleListTopicQuestions,
   handleAnswerQuestion,
   handleDismissQuestion,
+  handleOrganizeBrain,
+  handleGetBrainSummary,
 } from './handlers';
 
 import { requireAuth } from '@/lib/middleware/auth';
@@ -38,6 +41,9 @@ export const ingestionRoutes = prefix('/brains/:brainId', [
   }),
   route('/ingest/github', {
     post: [...brainGuard, handleIngestGitHub],
+  }),
+  route('/ingest/bulk', {
+    post: [...brainGuard, handleBulkIngest],
   }),
   route('/ingested-documents', {
     get: [...brainGuard, handleListIngestedDocuments],
@@ -66,5 +72,13 @@ export const ingestionRoutes = prefix('/brains/:brainId', [
   }),
   route('/questions/:questionId/dismiss', {
     post: [...brainGuard, handleDismissQuestion],
+  }),
+
+  // Organization
+  route('/organize', {
+    post: [...brainGuard, handleOrganizeBrain],
+  }),
+  route('/summary', {
+    get: [...brainGuard, handleGetBrainSummary],
   }),
 ]);

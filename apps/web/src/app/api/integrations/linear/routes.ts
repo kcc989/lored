@@ -9,6 +9,11 @@ import {
   handleLinearDisconnect,
   handleLinearStatus,
 } from './handlers';
+import {
+  handleListLinearTeams,
+  handleListLinearIssues,
+  handleListLinearProjects,
+} from './browse-handlers';
 
 export const linearIntegrationRoutes = prefix('/integrations/linear', [
   route('/connect', {
@@ -22,5 +27,14 @@ export const linearIntegrationRoutes = prefix('/integrations/linear', [
   }),
   route('/status', {
     get: [requireAuth, handleLinearStatus],
+  }),
+  route('/teams', {
+    get: [requireAuth, requireOrg, handleListLinearTeams],
+  }),
+  route('/issues', {
+    get: [requireAuth, requireOrg, handleListLinearIssues],
+  }),
+  route('/projects', {
+    get: [requireAuth, requireOrg, handleListLinearProjects],
   }),
 ]);

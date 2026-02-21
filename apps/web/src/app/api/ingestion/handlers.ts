@@ -16,6 +16,11 @@ import {
   listIngestions,
   listIngestedDocuments,
 } from '@/lib/services/ingestion-service';
+import { bulkIngest } from '@/lib/services/batch-ingestion-service';
+import {
+  organizeBrain,
+  getBrainSummary,
+} from '@/lib/services/organization-agent-service';
 import { listTopics, getTopic } from '@/lib/services/topic-service';
 import {
   listTopicQuestions,
@@ -394,4 +399,60 @@ export async function handleListIngestedDocuments({
   });
 
   return Response.json(documents);
+}
+
+// --- Bulk Ingestion Handler ---
+
+const bulkIngestItemSchema = z.object({
+  type: z.enum(['google_doc', 'github', 'linear', 'text']),
+  documentUrl: z.string().url().optional(),
+  contentUrl: z.string().url().optional(),
+  resourceUrl: z.string().url().optional(),
+  text: z.string().optional(),
+  title: z.string().max(500).optional(),
+});
+
+const bulkIngestSchema = z.object({
+  items: z.array(bulkIngestItemSchema).min(1).max(10),
+});
+
+export async function handleBulkIngest({
+  request,
+  ctx,
+  params,
+}: RequestInfo): Promise<Response> {
+  const body = await request.json();
+  const input = bulkIngestSchema.parse(body);
+
+  const result = await bulkIngest(ctx.factsDb!, env, {
+    brainId: params.brainId,
+    userId: ctx.user!.id,
+    items: input.items,
+  });
+
+  return Response.json(result);
+}
+
+// --- Organization Handlers ---
+
+export async function handleOrganizeBrain({
+  ctx,
+  params,
+}: RequestInfo): Promise<Response> {
+  const result = await organizeBrain(ctx.factsDb!, env, {
+    brainId: params.brainId,
+  });
+
+  return Response.json(result);
+}
+
+export async function handleGetBrainSummary({
+  ctx,
+  params,
+}: RequestInfo): Promise<Response> {
+  const summary = await getBrainSummary(ctx.factsDb!, params.brainId);
+  if (!summary) {
+    throw new NotFoundError('No summary available. Run organization first.');
+  }
+  return Response.json(summary);
 }

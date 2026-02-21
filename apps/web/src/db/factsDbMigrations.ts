@@ -527,4 +527,92 @@ export const migrations = {
       await db.schema.dropTable('ingested_document').ifExists().execute();
     },
   },
+  '004_topic_hierarchy_and_summaries': {
+    async up(db) {
+      return [
+        // Add parentTopicId to topic table for hierarchy
+        await db.schema
+          .alterTable('topic')
+          .addColumn('parentTopicId', 'text')
+          .execute(),
+
+        await db.schema
+          .createIndex('topic_parent_id_idx')
+          .on('topic')
+          .column('parentTopicId')
+          .execute(),
+
+        // topic_summary — AI-generated prose summaries per topic
+        await db.schema
+          .createTable('topic_summary')
+          .addColumn('id', 'text', (col) => col.primaryKey())
+          .addColumn('topicId', 'text', (col) =>
+            col.notNull().references('topic.id').onDelete('cascade')
+          )
+          .addColumn('brainId', 'text', (col) =>
+            col.notNull().references('brain.id').onDelete('cascade')
+          )
+          .addColumn('summary', 'text', (col) => col.notNull())
+          .addColumn('keyInsights', 'text')
+          .addColumn('version', 'integer', (col) =>
+            col.notNull().defaultTo(1)
+          )
+          .addColumn('generatedAt', 'text', (col) => col.notNull())
+          .addColumn('createdAt', 'text', (col) => col.notNull())
+          .addColumn('updatedAt', 'text', (col) => col.notNull())
+          .execute(),
+
+        await db.schema
+          .createIndex('topic_summary_topic_idx')
+          .on('topic_summary')
+          .column('topicId')
+          .execute(),
+
+        await db.schema
+          .createIndex('topic_summary_brain_idx')
+          .on('topic_summary')
+          .column('brainId')
+          .execute(),
+
+        await db.schema
+          .createIndex('topic_summary_unique_idx')
+          .on('topic_summary')
+          .columns(['topicId', 'version'])
+          .unique()
+          .execute(),
+
+        // brain_summary — overall AI-generated brain summary with topic hierarchy
+        await db.schema
+          .createTable('brain_summary')
+          .addColumn('id', 'text', (col) => col.primaryKey())
+          .addColumn('brainId', 'text', (col) =>
+            col.notNull().references('brain.id').onDelete('cascade')
+          )
+          .addColumn('summary', 'text', (col) => col.notNull())
+          .addColumn('topicHierarchy', 'text', (col) => col.notNull())
+          .addColumn('totalFacts', 'integer', (col) => col.notNull())
+          .addColumn('totalTopics', 'integer', (col) => col.notNull())
+          .addColumn('averageCoverage', 'real', (col) => col.notNull())
+          .addColumn('version', 'integer', (col) =>
+            col.notNull().defaultTo(1)
+          )
+          .addColumn('generatedAt', 'text', (col) => col.notNull())
+          .addColumn('createdAt', 'text', (col) => col.notNull())
+          .addColumn('updatedAt', 'text', (col) => col.notNull())
+          .execute(),
+
+        await db.schema
+          .createIndex('brain_summary_brain_idx')
+          .on('brain_summary')
+          .column('brainId')
+          .unique()
+          .execute(),
+      ];
+    },
+
+    async down(db) {
+      await db.schema.dropTable('brain_summary').ifExists().execute();
+      await db.schema.dropTable('topic_summary').ifExists().execute();
+    },
+  },
 } satisfies Migrations;
