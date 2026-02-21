@@ -17,7 +17,7 @@ import {
 
 export const linearIntegrationRoutes = prefix('/integrations/linear', [
   route('/connect', {
-    get: [requireAuth, requireOrg, handleLinearConnect],
+    get: [requireAuth, handleLinearConnect],
   }),
   route('/callback', {
     get: [requireAuth, handleLinearCallback],

@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 
+import { ConnectedAccounts } from './connected-accounts';
 import { ProfileForm } from './profile-form';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -61,6 +62,19 @@ export function SettingsContent() {
             initialUsername={userProfile?.username || ''}
             initialImage={userProfile?.image || null}
           />
+        </CardContent>
+      </Card>
+
+      {/* Connected Accounts Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Connected Accounts</CardTitle>
+          <CardDescription>
+            Connect your accounts to import data from external services
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ConnectedAccounts />
         </CardContent>
       </Card>
     </div>

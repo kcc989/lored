@@ -16,7 +16,7 @@ import {
 
 export const githubIntegrationRoutes = prefix('/integrations/github', [
   route('/connect', {
-    get: [requireAuth, requireOrg, handleGitHubIntegrationConnect],
+    get: [requireAuth, handleGitHubIntegrationConnect],
   }),
   route('/callback', {
     get: [requireAuth, handleGitHubIntegrationCallback],
