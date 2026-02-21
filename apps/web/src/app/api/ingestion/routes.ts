@@ -4,6 +4,7 @@ import {
   handleIngestText,
   handleIngestFile,
   handleIngestGoogleDoc,
+  handleIngestLinearResource,
   handleListIngestions,
   handleGetIngestion,
   handleListIngestedDocuments,
@@ -30,6 +31,9 @@ export const ingestionRoutes = prefix('/brains/:brainId', [
   }),
   route('/ingest/google-doc', {
     post: [...brainGuard, handleIngestGoogleDoc],
+  }),
+  route('/ingest/linear', {
+    post: [...brainGuard, handleIngestLinearResource],
   }),
   route('/ingested-documents', {
     get: [...brainGuard, handleListIngestedDocuments],

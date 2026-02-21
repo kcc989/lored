@@ -6,6 +6,7 @@ import {
   searchBrainInternal,
   ingestTextInternal,
   ingestGoogleDocInternal,
+  ingestLinearResourceInternal,
   listTopicsInternal,
   listQuestionsInternal,
   answerQuestionInternal,
@@ -26,6 +27,9 @@ export const internalRoutes = prefix('/internal', [
   }),
   route('/ingest/google-doc', {
     post: ingestGoogleDocInternal,
+  }),
+  route('/ingest/linear', {
+    post: ingestLinearResourceInternal,
   }),
   route('/topics', {
     post: listTopicsInternal,

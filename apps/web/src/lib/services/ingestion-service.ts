@@ -33,6 +33,18 @@ import {
   GoogleDocError,
   MAX_FILE_SIZE_BYTES,
 } from '@/lib/services/google-docs-service';
+import {
+  getValidLinearToken,
+  LinearAuthError,
+} from '@/lib/services/linear-auth-service';
+import {
+  parseLinearUrl,
+  isLinearUrl,
+  extractLinearUrl,
+  fetchLinearIssue,
+  fetchLinearProject,
+  LinearIssueError,
+} from '@/lib/services/linear-issues-service';
 
 // --- Types ---
 
@@ -64,6 +76,19 @@ export interface GoogleDocErrorResult {
   documentTitle?: string;
   sizeBytes?: number;
   maxSizeBytes?: number;
+}
+
+export interface IngestLinearInput {
+  brainId: string;
+  resourceUrl: string;
+  userId: string;
+}
+
+export interface LinearErrorResult {
+  error: string;
+  message: string;
+  connectUrl?: string;
+  resourceTitle?: string;
 }
 
 export interface IngestionResult {
@@ -176,7 +201,7 @@ async function processExtraction(
   env: Env,
   brainId: string,
   ingestionId: string,
-  sourceType: 'text_input' | 'document_upload' | 'image_upload' | 'google_doc',
+  sourceType: 'text_input' | 'document_upload' | 'image_upload' | 'google_doc' | 'linear_issue',
   extractionInput: ExtractionInput,
   userId: string
 ): Promise<Omit<IngestionResult, 'ingestion'>> {
@@ -936,6 +961,228 @@ export function detectGoogleDocInText(text: string): string | null {
   // Only auto-detect if the entire input looks like a URL or starts with one
   if (isGoogleDocUrl(trimmed)) {
     return extractGoogleDocUrl(trimmed);
+  }
+  return null;
+}
+
+// --- Linear Ingestion ---
+
+/**
+ * Ingest a Linear issue or project by URL. Fetches the content using the user's
+ * Linear connection, then runs it through the standard extraction pipeline.
+ *
+ * Returns a LinearErrorResult if there's a connection or access issue,
+ * or an IngestionResult on success.
+ */
+export async function ingestLinearResource(
+  factsDb: FactsAppDatabase,
+  env: Env,
+  input: IngestLinearInput
+): Promise<IngestionResult | LinearErrorResult> {
+  // 1. Parse the URL
+  const parsed = parseLinearUrl(input.resourceUrl);
+  if (!parsed) {
+    return {
+      error: 'invalid_url',
+      message: 'Not a valid Linear URL. Expected format: https://linear.app/{workspace}/issue/{ID} or https://linear.app/{workspace}/project/{slug}',
+    };
+  }
+
+  // 2. Get a valid Linear token
+  let accessToken: string;
+  try {
+    const result = await getValidLinearToken(env, input.userId);
+    accessToken = result.accessToken;
+  } catch (err) {
+    if (err instanceof LinearAuthError) {
+      if (err.code === 'linear_not_connected') {
+        return {
+          error: 'linear_not_connected',
+          message: 'Connect your Linear account to ingest Linear issues and projects.',
+          connectUrl: '/api/integrations/linear/connect',
+        };
+      }
+      return {
+        error: err.code,
+        message: err.message,
+        connectUrl: '/api/integrations/linear/connect',
+      };
+    }
+    throw err;
+  }
+
+  // 3. Fetch content
+  let content;
+  try {
+    if (parsed.type === 'issue') {
+      content = await fetchLinearIssue(accessToken, parsed.identifier);
+    } else {
+      content = await fetchLinearProject(accessToken, parsed.identifier);
+    }
+  } catch (err) {
+    if (err instanceof LinearIssueError) {
+      return {
+        error: err.code,
+        message: err.message,
+      };
+    }
+    throw err;
+  }
+
+  // 4. Check if already ingested with same content
+  const provider = parsed.type === 'issue' ? 'linear_issue' : 'linear_project';
+  const existing = await factsDb
+    .selectFrom('ingested_document')
+    .where('brainId', '=', input.brainId)
+    .where('provider', '=', provider)
+    .where('externalDocumentId', '=', content.externalId)
+    .selectAll()
+    .executeTakeFirst();
+
+  if (existing && existing.contentHash === content.contentHash) {
+    return {
+      error: 'no_changes',
+      message: `"${content.title}" has not changed since last ingestion.`,
+      resourceTitle: content.title,
+    };
+  }
+
+  // 5. Create ingestion record and run extraction
+  const now = new Date().toISOString();
+  const ingestionId = nanoid();
+
+  const ingestionMetadata = JSON.stringify({
+    linearResourceType: parsed.type,
+    linearIdentifier: content.externalId,
+    linearUrl: input.resourceUrl,
+    resourceTitle: content.title,
+  });
+
+  await factsDb
+    .insertInto('ingestion')
+    .values({
+      id: ingestionId,
+      brainId: input.brainId,
+      sourceType: 'linear_issue',
+      title: content.title,
+      rawText: content.text,
+      r2Key: null,
+      mimeType: null,
+      fileSizeBytes: new TextEncoder().encode(content.text).length,
+      status: 'processing',
+      factCount: 0,
+      errorMessage: null,
+      metadata: ingestionMetadata,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: input.userId,
+    })
+    .execute();
+
+  try {
+    const { existingFacts, existingTopics } = await getExistingContext(
+      env,
+      factsDb,
+      input.brainId,
+      content.text.slice(0, 500)
+    );
+
+    const resourceLabel = parsed.type === 'issue' ? 'Issue' : 'Project';
+    const result = await processExtraction(
+      factsDb,
+      env,
+      input.brainId,
+      ingestionId,
+      'linear_issue',
+      {
+        rawText: content.text,
+        sourceDescription: `Linear ${resourceLabel}: ${content.title}`,
+        sourceType: 'linear_issue',
+        existingFacts,
+        existingTopics,
+      },
+      input.userId
+    );
+
+    const factCount =
+      result.factsCreated.length + result.factsUpdated.length;
+
+    await factsDb
+      .updateTable('ingestion')
+      .set({
+        status: 'completed',
+        factCount,
+        updatedAt: new Date().toISOString(),
+      })
+      .where('id', '=', ingestionId)
+      .execute();
+
+    // 6. Upsert ingested_document record
+    if (existing) {
+      await factsDb
+        .updateTable('ingested_document')
+        .set({
+          title: content.title,
+          documentUrl: input.resourceUrl,
+          lastIngestionId: ingestionId,
+          lastIngestedAt: now,
+          contentHash: content.contentHash,
+          ingestionCount: factsDb.raw('ingestionCount + 1'),
+          updatedAt: now,
+        })
+        .where('id', '=', existing.id)
+        .execute();
+    } else {
+      await factsDb
+        .insertInto('ingested_document')
+        .values({
+          id: nanoid(),
+          brainId: input.brainId,
+          provider,
+          externalDocumentId: content.externalId,
+          title: content.title,
+          documentUrl: input.resourceUrl,
+          lastIngestionId: ingestionId,
+          lastModifiedAt: null,
+          lastIngestedAt: now,
+          contentHash: content.contentHash,
+          ingestionCount: 1,
+          status: 'active',
+          metadata: JSON.stringify({ linearResourceType: parsed.type }),
+          createdAt: now,
+          updatedAt: now,
+          createdBy: input.userId,
+        })
+        .execute();
+    }
+
+    return {
+      ingestion: { id: ingestionId, status: 'completed', factCount },
+      ...result,
+    };
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error';
+    await factsDb
+      .updateTable('ingestion')
+      .set({
+        status: 'failed',
+        errorMessage,
+        updatedAt: new Date().toISOString(),
+      })
+      .where('id', '=', ingestionId)
+      .execute();
+    throw error;
+  }
+}
+
+/**
+ * Check if text input is a Linear URL and should be routed to Linear ingestion.
+ */
+export function detectLinearUrlInText(text: string): string | null {
+  const trimmed = text.trim();
+  if (isLinearUrl(trimmed)) {
+    return extractLinearUrl(trimmed);
   }
   return null;
 }

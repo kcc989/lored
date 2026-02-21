@@ -110,6 +110,92 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 		};
 	}
 
+	private async ingestLinearViaInternal(
+		organizationId: string,
+		brainId: string,
+		resourceUrl: string,
+	) {
+		const response = await this.env.WEB_APP.fetch(
+			new Request('http://internal/api/internal/ingest/linear', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					userId: this.props!.loredUserId,
+					organizationId,
+					brainId,
+					resourceUrl,
+				}),
+			}),
+		);
+
+		if (!response.ok) {
+			const errorBody = (await response.json().catch(() => null)) as {
+				error?: string;
+				message?: string;
+				connectUrl?: string;
+			} | null;
+
+			if (errorBody?.error === 'linear_not_connected') {
+				return {
+					content: [
+						{
+							text: 'You need to connect your Linear account first. Visit your Lored settings page to connect your Linear account, then try again.',
+							type: 'text' as const,
+						},
+					],
+					isError: true,
+				};
+			}
+
+			if (errorBody?.error === 'linear_token_expired') {
+				return {
+					content: [
+						{
+							text: 'Your Linear connection has expired. Please reconnect your Linear account in settings, then try again.',
+							type: 'text' as const,
+						},
+					],
+					isError: true,
+				};
+			}
+
+			if (errorBody?.error === 'linear_access_denied') {
+				return {
+					content: [
+						{
+							text: 'Your Linear account cannot access this resource. Make sure you have access in Linear.',
+							type: 'text' as const,
+						},
+					],
+					isError: true,
+				};
+			}
+
+			if (errorBody?.error === 'linear_not_found') {
+				return {
+					content: [
+						{
+							text: 'Linear resource not found. Check that the URL is correct.',
+							type: 'text' as const,
+						},
+					],
+					isError: true,
+				};
+			}
+
+			const errorText = errorBody?.message ?? `HTTP ${response.status}`;
+			return {
+				content: [{ text: `Linear ingestion failed: ${errorText}`, type: 'text' as const }],
+				isError: true,
+			};
+		}
+
+		const result = await response.json();
+		return {
+			content: [{ text: JSON.stringify(result), type: 'text' as const }],
+		};
+	}
+
 	async init() {
 		this.server.tool(
 			'add',
@@ -244,7 +330,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 
 		this.server.tool(
 			'ingest',
-			'Submit text or a Google Doc URL to a brain for fact extraction. The system will analyze the content, extract structured facts, identify topics, detect duplicates, and generate questions for knowledge gaps. If the text is a Google Doc URL, it will automatically fetch the document content.',
+			'Submit text, a Google Doc URL, or a Linear issue/project URL to a brain for fact extraction. The system will analyze the content, extract structured facts, identify topics, detect duplicates, and generate questions for knowledge gaps. Google Doc and Linear URLs are automatically detected and fetched.',
 			{
 				organizationId: z.string().describe('The organization ID the brain belongs to'),
 				brainId: z.string().describe('The brain ID to ingest text into'),
@@ -252,7 +338,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 					.string()
 					.min(1)
 					.describe(
-						'The raw text content to extract facts from, or a Google Docs URL to fetch and ingest',
+						'The raw text content to extract facts from, or a Google Docs / Linear URL to fetch and ingest',
 					),
 				title: z.string().optional().describe('Optional title describing the source of this text'),
 			},
@@ -272,6 +358,12 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 					/https?:\/\/docs\.google\.com\/document\/d\/[a-zA-Z0-9_-]+/;
 				if (googleDocPattern.test(text)) {
 					return this.ingestGoogleDocViaInternal(organizationId, brainId, text);
+				}
+
+				// Auto-detect Linear URLs
+				const linearPattern = /https?:\/\/linear\.app\/[^/]+\/(issue|project)\/[^\s]+/;
+				if (linearPattern.test(text)) {
+					return this.ingestLinearViaInternal(organizationId, brainId, text.trim());
 				}
 
 				const response = await this.env.WEB_APP.fetch(
@@ -326,6 +418,34 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 				}
 
 				return this.ingestGoogleDocViaInternal(organizationId, brainId, documentUrl);
+			},
+		);
+
+		this.server.tool(
+			'ingest-linear',
+			'Ingest a Linear issue or project into a brain for fact extraction. Fetches the content using the authenticated user\'s Linear connection, then extracts facts, topics, and questions. Requires the user to have connected their Linear account.',
+			{
+				organizationId: z.string().describe('The organization ID the brain belongs to'),
+				brainId: z.string().describe('The brain ID to ingest the Linear resource into'),
+				resourceUrl: z
+					.string()
+					.min(1)
+					.describe(
+						'The Linear URL (e.g. https://linear.app/acme/issue/ACM-123 or https://linear.app/acme/project/my-project)',
+					),
+			},
+			async ({ organizationId, brainId, resourceUrl }) => {
+				const org = this.props?.organizations?.find((o) => o.id === organizationId);
+				if (!org) {
+					return {
+						content: [
+							{ text: 'Organization not found or you do not have access', type: 'text' as const },
+						],
+						isError: true,
+					};
+				}
+
+				return this.ingestLinearViaInternal(organizationId, brainId, resourceUrl);
 			},
 		);
 

@@ -18,6 +18,9 @@ declare module 'cloudflare:workers' {
     // Google OAuth (for Google Docs integration)
     GOOGLE_CLIENT_ID: string;
     GOOGLE_CLIENT_SECRET: string;
+    // Linear OAuth (for Linear integration)
+    LINEAR_CLIENT_ID: string;
+    LINEAR_CLIENT_SECRET: string;
   }
 }
 
@@ -39,5 +42,8 @@ declare namespace Cloudflare {
     // Google OAuth (for Google Docs integration)
     GOOGLE_CLIENT_ID: string;
     GOOGLE_CLIENT_SECRET: string;
+    // Linear OAuth (for Linear integration)
+    LINEAR_CLIENT_ID: string;
+    LINEAR_CLIENT_SECRET: string;
   }
 }

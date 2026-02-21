@@ -7,7 +7,7 @@ import { getFactsDb } from '@/db/facts';
 import { getBrain } from '@/lib/services/brain-service';
 import { getCachedTeamMemberships } from '@/lib/services/team-membership-cache';
 import { searchFacts } from '@/lib/services/fact-search-service';
-import { ingestText, ingestGoogleDoc } from '@/lib/services/ingestion-service';
+import { ingestText, ingestGoogleDoc, ingestLinearResource } from '@/lib/services/ingestion-service';
 import { listTopics } from '@/lib/services/topic-service';
 import {
   listTopicQuestions,
@@ -330,6 +330,47 @@ export async function ingestGoogleDocInternal({
       google_access_denied: 403,
       google_doc_not_found: 404,
       google_doc_too_large: 413,
+    };
+    return Response.json(result, { status: statusMap[result.error] ?? 400 });
+  }
+
+  return Response.json(result, { status: 201 });
+}
+
+// --- Linear Ingestion (internal, for MCP) ---
+
+const internalIngestLinearSchema = z.object({
+  userId: z.string().min(1),
+  organizationId: z.string().min(1),
+  brainId: z.string().min(1),
+  resourceUrl: z.string().min(1),
+});
+
+export async function ingestLinearResourceInternal({
+  request,
+}: RequestInfo): Promise<Response> {
+  const body = await request.json();
+  const input = internalIngestLinearSchema.parse(body);
+
+  const { error, status, factsDb } = await validateBrainAccess(
+    input.userId,
+    input.organizationId,
+    input.brainId,
+  );
+  if (error) return Response.json({ error }, { status });
+
+  const result = await ingestLinearResource(factsDb, env, {
+    brainId: input.brainId,
+    resourceUrl: input.resourceUrl,
+    userId: input.userId,
+  });
+
+  if ('error' in result) {
+    const statusMap: Record<string, number> = {
+      linear_not_connected: 401,
+      linear_token_expired: 401,
+      linear_access_denied: 403,
+      linear_not_found: 404,
     };
     return Response.json(result, { status: statusMap[result.error] ?? 400 });
   }
