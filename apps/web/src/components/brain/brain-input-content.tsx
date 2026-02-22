@@ -12,6 +12,7 @@ import { GoogleDocsBrowser } from './google-docs-browser';
 import { GitHubBrowser } from './github-browser';
 import { LinearBrowser } from './linear-browser';
 import { TextInput } from './text-input';
+import { FileUpload } from './file-upload';
 import { IngestionQueue } from './ingestion-queue';
 import type { BulkIngestItem } from './types';
 
@@ -47,22 +48,26 @@ export function BrainInputContent({ brainId }: Props) {
       <div className="lg:col-span-2">
         <Tabs defaultValue={0}>
           <TabsList>
-            <TabsTrigger value={0}>Google Docs</TabsTrigger>
-            <TabsTrigger value={1}>GitHub</TabsTrigger>
-            <TabsTrigger value={2}>Linear</TabsTrigger>
-            <TabsTrigger value={3}>Text</TabsTrigger>
+            <TabsTrigger value={0}>Text</TabsTrigger>
+            <TabsTrigger value={1}>Files</TabsTrigger>
+            <TabsTrigger value={2}>Google Docs</TabsTrigger>
+            <TabsTrigger value={3}>GitHub</TabsTrigger>
+            <TabsTrigger value={4}>Linear</TabsTrigger>
           </TabsList>
           <TabsContent value={0}>
-            <GoogleDocsBrowser onSelect={addItem} />
+            <TextInput brainId={brainId} onSubmit={addItem} />
           </TabsContent>
           <TabsContent value={1}>
-            <GitHubBrowser onSelect={addItem} />
+            <FileUpload brainId={brainId} />
           </TabsContent>
           <TabsContent value={2}>
-            <LinearBrowser onSelect={addItem} />
+            <GoogleDocsBrowser onSelect={addItem} />
           </TabsContent>
           <TabsContent value={3}>
-            <TextInput onSubmit={addItem} />
+            <GitHubBrowser onSelect={addItem} />
+          </TabsContent>
+          <TabsContent value={4}>
+            <LinearBrowser onSelect={addItem} />
           </TabsContent>
         </Tabs>
       </div>

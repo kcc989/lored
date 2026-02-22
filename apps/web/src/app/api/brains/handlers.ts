@@ -2,8 +2,9 @@ import { env } from 'cloudflare:workers';
 import type { RequestInfo } from 'rwsdk/worker';
 import { z } from 'zod';
 
+import { db } from '@/db';
 import { getFactsDb } from '@/db/facts';
-import { NotFoundError, ValidationError } from '@/lib/errors';
+import { ForbiddenError, NotFoundError, ValidationError } from '@/lib/errors';
 import {
   createBrain,
   getBrain,
@@ -12,11 +13,15 @@ import {
   archiveBrain,
   deleteBrain,
 } from '@/lib/services/brain-service';
-import { getCachedTeamMemberships } from '@/lib/services/team-membership-cache';
+import {
+  getCachedTeamMemberships,
+  isTeamMemberCached,
+} from '@/lib/services/team-membership-cache';
 
 const createBrainSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(2000).optional(),
+  teamId: z.string().optional(),
 });
 
 const updateBrainSchema = z.object({
@@ -25,7 +30,7 @@ const updateBrainSchema = z.object({
 });
 
 /**
- * Create a brain for the active team.
+ * Create a brain for a specified team or the active team.
  */
 export async function handleCreateBrain({
   ctx,
@@ -34,12 +39,19 @@ export async function handleCreateBrain({
   const body = await request.json();
   const input = createBrainSchema.parse(body);
 
-  if (!ctx.activeTeam) {
-    throw new ValidationError('No active team selected');
+  const teamId = input.teamId ?? ctx.activeTeam?.id;
+  if (!teamId) {
+    throw new ValidationError('No team specified and no active team selected');
   }
 
-  const brain = await createBrain(ctx.factsDb!, env, {
-    teamId: ctx.activeTeam.id,
+  const factsDb = ctx.factsDb ?? getFactsDb(ctx.activeOrganization!.id);
+  const isMember = await isTeamMemberCached(factsDb, ctx.user!.id, teamId);
+  if (!isMember) {
+    throw new ForbiddenError('Not a member of the specified team');
+  }
+
+  const brain = await createBrain(factsDb, env, {
+    teamId,
     name: input.name,
     description: input.description,
     userId: ctx.user!.id,
@@ -49,14 +61,14 @@ export async function handleCreateBrain({
 }
 
 /**
- * List all brains accessible to the user in the active org.
+ * List all brains accessible to the user in the active org,
+ * enriched with team names.
  */
 export async function handleListBrains({
   ctx,
 }: RequestInfo): Promise<Response> {
   const factsDb = ctx.factsDb ?? getFactsDb(ctx.activeOrganization!.id);
 
-  // Get all teams the user is effectively a member of
   const memberships = await getCachedTeamMemberships(
     factsDb,
     ctx.user!.id,
@@ -66,7 +78,24 @@ export async function handleListBrains({
   const teamIds = memberships.map((m) => m.teamId);
   const brains = await listBrainsForTeams(factsDb, teamIds);
 
-  return Response.json(brains);
+  // Enrich with team names from central DB
+  const uniqueTeamIds = [...new Set(brains.map((b: { teamId: string }) => b.teamId))] as string[];
+  let teamNameMap = new Map<string, string>();
+  if (uniqueTeamIds.length > 0) {
+    const teams = await db
+      .selectFrom('team')
+      .where('id', 'in', uniqueTeamIds)
+      .select(['id', 'name'])
+      .execute();
+    teamNameMap = new Map(teams.map((t) => [t.id, t.name]));
+  }
+
+  const enriched = brains.map((b: { teamId: string; [key: string]: unknown }) => ({
+    ...b,
+    teamName: teamNameMap.get(b.teamId) ?? 'Unknown Team',
+  }));
+
+  return Response.json(enriched);
 }
 
 /**

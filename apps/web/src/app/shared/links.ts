@@ -8,4 +8,5 @@ export const link = defineLinks([
   '/org/settings',
   '/brains/:brainId/input',
   '/brains/:brainId/summary',
+  '/brains/:brainId',
 ]);

@@ -3,8 +3,10 @@ import { requestInfo } from 'rwsdk/worker';
 import { AppLayout } from '../app-layout';
 
 import { Button } from '@/components/ui/button';
+import { BrainDashboardContent } from '@/components/brain/brain-dashboard-content';
+import { db } from '@/db';
 
-export const Home = () => {
+export const Home = async () => {
   const { ctx } = requestInfo;
   const user = ctx.user;
 
@@ -39,25 +41,20 @@ export const Home = () => {
     );
   }
 
-  // Show authenticated user's home page
+  // Fetch user's teams for the create brain dialog
+  const teams = await db
+    .selectFrom('teamMember')
+    .innerJoin('team', 'team.id', 'teamMember.teamId')
+    .where('teamMember.userId', '=', user!.id)
+    .where('team.organizationId', '=', ctx.activeOrganization.id)
+    .select(['team.id', 'team.name'])
+    .execute();
+
   return (
     <AppLayout>
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-6 py-12">
-          <div className="mb-12">
-            <h1 className="text-4xl font-semibold tracking-tight text-foreground">
-              Welcome{user?.username ? `, ${user.username}` : ''}!
-            </h1>
-            <p className="text-lg text-muted-foreground mt-2">
-              This is your home page.
-            </p>
-          </div>
-
-          <div className="max-w-4xl">
-            <p className="text-muted-foreground">
-              Start building your application here.
-            </p>
-          </div>
+          <BrainDashboardContent teams={teams} />
         </div>
       </div>
     </AppLayout>
