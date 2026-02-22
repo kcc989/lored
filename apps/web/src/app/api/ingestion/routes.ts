@@ -17,6 +17,7 @@ import {
   handleDismissQuestion,
   handleOrganizeBrain,
   handleGetBrainSummary,
+  handleDescribeAndBuild,
 } from './handlers';
 
 import { requireAuth } from '@/lib/middleware/auth';
@@ -80,5 +81,10 @@ export const ingestionRoutes = prefix('/brains/:brainId', [
   }),
   route('/summary', {
     get: [...brainGuard, handleGetBrainSummary],
+  }),
+
+  // Describe & Build
+  route('/describe-and-build', {
+    post: [...brainGuard, handleDescribeAndBuild],
   }),
 ]);

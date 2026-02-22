@@ -1,14 +1,17 @@
 'use client';
 
 import {
+  BookOpenTextIcon,
   CaretDoubleLeftIcon,
   CaretDoubleRightIcon,
   HouseSimpleIcon,
   MoonIcon,
+  PlusIcon,
   SignOutIcon,
   SunIcon,
 } from '@phosphor-icons/react';
 import { useState, useEffect, createContext, useContext } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
 import { OrgSwitcher } from '@/components/org/org-switcher';
 import {
@@ -199,6 +202,85 @@ function SignOutButton({ collapsed }: { collapsed: boolean }) {
   return button;
 }
 
+interface BrainListItem {
+  id: string;
+  name: string;
+  teamName?: string;
+}
+
+function BrainNavSection({ collapsed }: { collapsed: boolean }) {
+  const { data: brains } = useQuery({
+    queryKey: ['brains'],
+    queryFn: async (): Promise<BrainListItem[]> => {
+      const res = await fetch('/api/brains');
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const currentPath =
+    typeof window !== 'undefined' ? window.location.pathname : '';
+
+  if (!brains || brains.length === 0) return null;
+
+  const displayBrains = brains.slice(0, 8);
+
+  return (
+    <div
+      className={cn(
+        'border-t border-sidebar-border/50 py-3 transition-all duration-300',
+        collapsed ? 'px-3 space-y-1' : 'px-3 space-y-1'
+      )}
+    >
+      {/* Section header */}
+      {!collapsed ? (
+        <div className="flex items-center justify-between px-3 mb-1">
+          <span className="text-[11px] font-medium uppercase tracking-wider text-sidebar-foreground/40">
+            Brains
+          </span>
+          <a
+            href="/"
+            className="text-sidebar-foreground/40 hover:text-sidebar-foreground transition-colors"
+          >
+            <PlusIcon className="w-3.5 h-3.5" />
+          </a>
+        </div>
+      ) : (
+        <Tooltip>
+          <TooltipTrigger>
+            <a
+              href="/"
+              className="flex justify-center h-10 w-10 mx-auto items-center rounded-md text-sidebar-foreground/40 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-all duration-200"
+            >
+              <PlusIcon className="w-[18px] h-[18px]" />
+            </a>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={8} className="font-medium">
+            New brain
+          </TooltipContent>
+        </Tooltip>
+      )}
+
+      {/* Brain list */}
+      {displayBrains.map((brain) => {
+        const href = `/brains/${brain.id}`;
+        const isActive = currentPath === href;
+
+        return (
+          <NavItem
+            key={brain.id}
+            icon={BookOpenTextIcon}
+            label={brain.name}
+            href={href}
+            isActive={isActive}
+            collapsed={collapsed}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export function AppSidebar({
   username,
   email,
@@ -330,6 +412,9 @@ export function AppSidebar({
               );
             })}
           </nav>
+
+          {/* Brain navigation */}
+          <BrainNavSection collapsed={collapsed} />
 
           {/* Footer */}
           <div

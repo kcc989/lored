@@ -9,14 +9,14 @@ import {
 } from './handlers';
 
 import { requireAuth } from '@/lib/middleware/auth';
-import { requireOrg, requireTeam } from '@/lib/middleware/org';
+import { requireOrg } from '@/lib/middleware/org';
 import { requireFactsDb, requireBrainAccess } from '@/lib/middleware/brain';
 
 export const brainRoutes = prefix('/brains', [
   // List accessible brains / Create a brain
   route('/', {
     get: [requireAuth, requireOrg, requireFactsDb, handleListBrains],
-    post: [requireAuth, requireOrg, requireTeam, requireFactsDb, handleCreateBrain],
+    post: [requireAuth, requireOrg, requireFactsDb, handleCreateBrain],
   }),
   // Single brain operations (requires brain access check)
   route('/:brainId', {

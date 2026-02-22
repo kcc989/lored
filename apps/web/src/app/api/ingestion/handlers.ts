@@ -21,6 +21,7 @@ import {
   organizeBrain,
   getBrainSummary,
 } from '@/lib/services/organization-agent-service';
+import { describeAndBuild } from '@/lib/services/describe-build-service';
 import { listTopics, getTopic } from '@/lib/services/topic-service';
 import {
   listTopicQuestions,
@@ -146,6 +147,7 @@ export async function handleIngestFile({
     'text/plain',
     'text/markdown',
     'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   ];
 
   if (!allowedTypes.includes(file.type)) {
@@ -455,4 +457,27 @@ export async function handleGetBrainSummary({
     throw new NotFoundError('No summary available. Run organization first.');
   }
   return Response.json(summary);
+}
+
+// --- Describe & Build Handler ---
+
+const describeAndBuildSchema = z.object({
+  description: z.string().min(10).max(5000),
+});
+
+export async function handleDescribeAndBuild({
+  request,
+  ctx,
+  params,
+}: RequestInfo): Promise<Response> {
+  const body = await request.json();
+  const input = describeAndBuildSchema.parse(body);
+
+  const result = await describeAndBuild(ctx.factsDb!, env, {
+    brainId: params.brainId,
+    description: input.description,
+    userId: ctx.user!.id,
+  });
+
+  return Response.json(result, { status: 201 });
 }
